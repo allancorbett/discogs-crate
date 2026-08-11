@@ -1,0 +1,143 @@
+.wrap {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: 24px;
+}
+
+.card {
+  width: min(440px, 100%);
+}
+
+.eyebrow {
+  margin: 0 0 28px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.heading {
+  margin: 0 0 12px;
+  font-size: 1.9rem;
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.blurb {
+  margin: 0 0 32px;
+  color: var(--text-dim);
+  text-wrap: pretty;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.label {
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  transition: border-color 0.15s ease;
+}
+
+.input::placeholder {
+  color: var(--text-faint);
+}
+
+.input:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.input:disabled {
+  opacity: 0.5;
+}
+
+.submit {
+  margin-top: 8px;
+  padding: 12px 18px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  transition: filter 0.15s ease;
+}
+
+.submit:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.error {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 120, 120, 0.35);
+  border-radius: var(--radius);
+  background: rgba(255, 90, 90, 0.1);
+  color: #ffb4b4;
+  font-size: 0.86rem;
+}
+
+.help {
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 0.86rem;
+}
+
+.help summary {
+  cursor: pointer;
+  color: var(--text-faint);
+  list-style: none;
+}
+
+.help summary::-webkit-details-marker {
+  display: none;
+}
+
+.help summary::before {
+  content: "＋ ";
+}
+
+.help[open] summary::before {
+  content: "－ ";
+}
+
+.help summary:hover {
+  color: var(--text);
+}
+
+.help ol {
+  margin: 14px 0;
+  padding-left: 1.25em;
+}
+
+.help li {
+  margin-bottom: 6px;
+}
+
+.help p {
+  margin: 0;
+  color: var(--text-faint);
+}
