@@ -1,8 +1,9 @@
 # Crate
 
-Browse your Discogs collection as a CoverFlow-style carousel, or let it pick a
-record for you — at random, or narrowed to the genres and styles you're in the
-mood for.
+Flip through your Discogs collection like a crate of records — a vertical
+CoverFlow you drag, scroll or arrow through — filed by artist, year or genre, or
+shuffled. Or let it pick a record for you, at random or narrowed to the genres
+and styles you're in the mood for.
 
 Next.js (App Router) + TypeScript, deployable to Vercel as-is.
 
@@ -65,8 +66,9 @@ app/api/release/[id]                  tracklist and extended metadata
 lib/discogs/auth.ts        AuthStrategy seam (see below)
 lib/discogs/client.ts      fetch wrapper: User-Agent, credential, 429 backoff
 lib/discogs/collection.ts  paging and normalization to `Album`
-lib/coverflow.ts           carousel geometry and index maths (pure)
-lib/coverflowEngine.ts     the carousel's DOM/animation controller
+lib/coverflow.ts           crate geometry and index maths (pure)
+lib/coverflowEngine.ts     the crate's DOM/animation controller
+lib/ordering.ts            artist / year / genre / shuffle ordering (pure)
 lib/picker.ts              genre filtering and random choice (pure)
 ```
 
@@ -88,21 +90,39 @@ Discogs" button means writing an `OAuth1Strategy` that signs per request, plus
 `/api/auth/oauth/start` and `/api/auth/oauth/callback` route handlers. Nothing
 else changes — `client.ts` and every route handler already go through the seam.
 
-### The carousel
+### The crate
 
 `lib/coverflowEngine.ts` is deliberately plain DOM code rather than React. The
-carousel rewrites every cover's transform on every animation frame; routing that
+crate rewrites every cover's transform on every animation frame; routing that
 through React state would mean a full render per frame while dragging or
 spinning. React owns the markup, the engine owns everything that moves, and the
 two meet at a small imperative handle.
 
-It renders a fixed pool of 23 cover elements no matter how large the collection
+It renders a fixed pool of 13 cover elements no matter how large the collection
 is. Each slot owns one residue class modulo the pool size, so a given slot's
-album changes once every 23 steps instead of on every step — roughly one image
+album changes once every 13 steps instead of on every step — roughly one image
 swap per cover crossed, rather than one per slot per step.
 
-Reflections use `-webkit-box-reflect` (Chrome, Safari, Edge). Firefox has no
-equivalent, so it falls back to a mirrored, masked copy of the artwork.
+The stack runs top to bottom: the centred record stands square-on, the ones
+either side tip back at a steep angle so their inner edge faces you. Vertical
+room is the scarce dimension in a browser window, so the fan is tuned to keep
+every still-visible cover within about one cover-height of the centre — past
+that they would be clipped at the edge of the stage rather than fading there.
+
+### Ordering
+
+`lib/ordering.ts` files the crate by artist, year or genre, or shuffles it.
+Every mode falls through the same tiebreakers, so the result is fully
+determined — no record drifting position between renders. Artists are filed the
+way a record shop does it, ignoring leading articles, and undated or untagged
+releases go at the end rather than at the front.
+
+Shuffle places each record by hashing its own id against the seed rather than
+walking the array. The collection arrives a page at a time, and a Fisher–Yates
+shuffle would re-deal the whole crate on each arrival, yanking the covers out
+from under whoever is browsing. Hashing leaves the records already on screen in
+the same relative order and slots the new ones in among them; re-rolling the
+seed re-deals everything, which is what pressing shuffle again should do.
 
 ## Tests
 
@@ -110,10 +130,10 @@ equivalent, so it falls back to a mirrored, masked copy of the artwork.
 npm test
 ```
 
-Covers the pure layers: carousel geometry and wrapping, slot recycling, spin
-planning, genre filtering and picking, and collection normalization — including
-Discogs quirks like the `(2)` disambiguator in "Nirvana (2)" and `year: 0`
-meaning "unknown".
+Covers the pure layers: crate geometry and wrapping, slot recycling, spin
+planning, ordering and shuffling, genre filtering and picking, and collection
+normalization — including Discogs quirks like the `(2)` disambiguator in
+"Nirvana (2)" and `year: 0` meaning "unknown".
 
 ```bash
 npm run lint

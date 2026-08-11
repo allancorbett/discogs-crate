@@ -1,32 +1,57 @@
 /**
- * Pure geometry and index maths for the CoverFlow carousel. Kept free of DOM
+ * Pure geometry and index maths for the crate carousel. Kept free of DOM
  * access so the awkward parts — slot recycling, wrapping, easing — can be
  * reasoned about and tested on their own.
+ *
+ * The stack runs vertically: the centred record stands square-on, the ones
+ * behind it lean back above, the ones already flipped past lean back below.
+ * That's the read of a record crate tipped towards you, rather than the
+ * left-to-right shelf the horizontal cover flow drew.
  */
 
-/** How many cover elements exist in the DOM, regardless of collection size. */
-export const SLOT_COUNT = 23;
+/**
+ * How many cover elements exist in the DOM, regardless of collection size.
+ * Only needs to cover the centre plus everything before the fade completes —
+ * see FADE_END — with a slot to spare at each end.
+ */
+export const SLOT_COUNT = 13;
 
 export interface Geometry {
-  /** Horizontal offset in cover-widths. */
-  x: number;
-  /** Depth in pixels; side covers sit behind the centre one. */
+  /** Vertical offset in cover-heights, positive downwards. */
+  y: number;
+  /** Depth in pixels; the covers above and below sit behind the centre one. */
   z: number;
-  /** Y rotation in degrees. */
+  /**
+   * X rotation in degrees. Negative below the centre and positive above it, so
+   * each cover's inner edge — the one nearest the centre — tips towards the
+   * viewer and the stack opens up like a crate being leafed through.
+   */
   rotate: number;
   scale: number;
   opacity: number;
   zIndex: number;
 }
 
-const CENTRE_GAP = 0.58; // gap between the centre cover and the first side one
-const SIDE_STEP = 0.3; // additional offset per cover further out
-const SIDE_COMPRESSION = 0.72; // <1 packs distant covers tighter, as iTunes did
-const ANGLE = 62; // degrees the side covers are turned by
-const DEPTH = 190; // px the side stacks sit behind the centre cover
-const CENTRE_LIFT = 0.14; // extra scale on the centre cover
-const FADE_START = 6; // covers begin fading this far out…
-const FADE_END = 10.5; // …and are fully transparent here
+/*
+ * Tuned against a different constraint than the horizontal version was.
+ * Vertical room is the scarce dimension in a browser window, so the whole
+ * stack has to live inside roughly one cover-height either side of the centre
+ * — see the corresponding test — or covers get clipped at the edge of the
+ * stage instead of fading there.
+ *
+ * The angle is steeper than a horizontal cover flow's for that reason: it
+ * foreshortens each sleeve harder, so a shorter fan still shows a decent slice
+ * of every cover rather than a stack of thin slats. It also happens to be much
+ * closer to how records actually sit in a crate.
+ */
+const CENTRE_GAP = 0.62; // gap between the centre cover and the first one out
+const SIDE_STEP = 0.19; // additional offset per cover further out
+const SIDE_COMPRESSION = 0.68; // <1 packs distant covers tighter, as iTunes did
+const ANGLE = 68; // degrees the covers above and below are tipped by
+const DEPTH = 190; // px the two stacks sit behind the centre cover
+const CENTRE_LIFT = 0.12; // extra scale on the centre cover
+const FADE_START = 2.6; // covers begin fading this far out…
+const FADE_END = 5; // …and are fully transparent here
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -54,30 +79,31 @@ export function slotPosition(
 }
 
 /**
- * Places a cover from its signed distance to the centre. Distance is
- * fractional, so covers interpolate smoothly between states instead of
- * snapping as the centre changes.
+ * Places a cover from its signed distance to the centre — positive for records
+ * further down the crate. Distance is fractional, so covers interpolate
+ * smoothly between states instead of snapping as the centre changes.
  */
 export function geometryFor(distance: number): Geometry {
   const inner = clamp(distance, -1, 1);
   const outer = distance - inner;
   const magnitude = Math.abs(distance);
 
-  const x =
+  const y =
     inner * CENTRE_GAP +
     Math.sign(outer) * SIDE_STEP * Math.abs(outer) ** SIDE_COMPRESSION;
 
   const fade = 1 - (magnitude - FADE_START) / (FADE_END - FADE_START);
 
   return {
-    x,
+    y,
     // The small extra depth per cover further out keeps the browser's own 3D
     // sorting in agreement with zIndex, instead of leaving coplanar covers to
     // paint in an arbitrary order.
     z: -DEPTH * Math.abs(inner) - 2 * Math.abs(outer),
-    // Side covers turn to face outward, so the edge nearest the centre reads
-    // as closest to the viewer — the classic fanned-stack look.
-    rotate: inner * ANGLE,
+    // Negated because a positive rotateX swings the *bottom* edge forwards:
+    // the covers below the centre need their top edge brought towards the
+    // viewer, and the ones above their bottom edge.
+    rotate: -inner * ANGLE,
     scale: 1 + CENTRE_LIFT * (1 - Math.abs(inner)),
     opacity: clamp(fade, 0, 1),
     zIndex: 1000 - Math.round(magnitude * 10),

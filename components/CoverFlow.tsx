@@ -24,8 +24,9 @@ interface Props {
 }
 
 /**
- * Markup and caption for the carousel. All motion lives in CoverFlowEngine —
- * see the note there on why this component stays out of the animation path.
+ * Markup and caption for the vertical crate. All motion lives in
+ * CoverFlowEngine — see the note there on why this component stays out of the
+ * animation path.
  */
 export function CoverFlow({ albums, onCentreChange, onSelect, ref }: Props) {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -56,12 +57,7 @@ export function CoverFlow({ albums, onCentreChange, onSelect, ref }: Props) {
       .map((root): SlotElements => {
         const img = (role: string) =>
           root.querySelector(`img[data-role=${role}]`) as HTMLImageElement;
-        return {
-          root,
-          thumb: img("thumb"),
-          hires: img("hires"),
-          reflection: img("reflection"),
-        };
+        return { root, thumb: img("thumb"), hires: img("hires") };
       });
 
     const engine = new CoverFlowEngine({
@@ -119,7 +115,7 @@ export function CoverFlow({ albums, onCentreChange, onSelect, ref }: Props) {
         className={styles.stage}
         tabIndex={0}
         role="group"
-        aria-label="Collection cover flow. Use the arrow keys to browse."
+        aria-label="Record crate. Use the up and down arrow keys to flip through it."
       >
         <div className={styles.track}>
           {Array.from({ length: SLOT_COUNT }, (_, index) => (
@@ -150,15 +146,6 @@ export function CoverFlow({ albums, onCentreChange, onSelect, ref }: Props) {
                 onLoad={(event) => {
                   event.currentTarget.style.opacity = "1";
                 }}
-              />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                data-role="reflection"
-                className={styles.reflection}
-                alt=""
-                aria-hidden="true"
-                draggable={false}
-                decoding="async"
               />
             </div>
           ))}
