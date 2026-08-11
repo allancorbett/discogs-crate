@@ -1,0 +1,99 @@
+.bar {
+  flex: none;
+  padding: 14px 20px 20px;
+  border-top: 1px solid var(--border);
+  /* Opaque rather than a translucent backdrop-filter: the stage clips its own
+     overflow, so nothing ever shows through here, and a backdrop blur is one
+     of the more expensive things to keep alive next to an animating carousel. */
+  background: var(--bg);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.pick {
+  flex: none;
+  padding: 0.62em 1.3em;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  transition: filter 0.15s ease;
+}
+
+.pick:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.pick:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 7px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+  /* Fade the overflow rather than cutting chips off mid-word. */
+  mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent);
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
+}
+
+.styleRow {
+  margin-top: 8px;
+  flex-wrap: wrap;
+  overflow: visible;
+  mask-image: none;
+}
+
+.count {
+  color: currentColor;
+  opacity: 0.5;
+  font-size: 0.75em;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary {
+  margin: 10px 0 0;
+  color: var(--text-faint);
+  font-size: 0.78rem;
+}
+
+.clear {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.clear:hover {
+  color: var(--text);
+}
+
+@media (max-width: 720px) {
+  .row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .pick {
+    width: 100%;
+  }
+}

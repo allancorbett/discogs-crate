@@ -1,0 +1,303 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(4, 4, 6, 0.72);
+  backdrop-filter: blur(8px);
+  animation: fade 0.2s ease;
+}
+
+.panel {
+  position: relative;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  /*
+   * Without an explicit row the implicit one is `auto` and sizes to content,
+   * so the scrolling child never gets a bounded height and a long tracklist is
+   * simply clipped by the overflow rule below. minmax(0, 1fr) caps the row at
+   * the panel's height and lets .body scroll inside it.
+   */
+  grid-template-rows: minmax(0, 1fr);
+  gap: 28px;
+  width: min(820px, 100%);
+  max-height: min(720px, 90dvh);
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: #101014;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  animation: rise 0.28s var(--ease-out);
+}
+
+.close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  /* Opaque, because a long tracklist scrolls underneath this button. */
+  background: #1b1b21;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+
+.close:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.art {
+  align-self: start;
+}
+
+.art img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 4px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+}
+
+.noArt {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  padding: 12%;
+  border-radius: 4px;
+  background: linear-gradient(150deg, #26262e, #131317);
+  color: var(--text-faint);
+  font-size: 0.86rem;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.header {
+  flex: none;
+  padding-right: 36px;
+}
+
+.artist {
+  margin: 0;
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 550;
+  letter-spacing: 0.02em;
+}
+
+.title {
+  margin: 4px 0 8px;
+  font-size: 1.5rem;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.meta {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tags li {
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+}
+
+.tracklist {
+  margin-top: 20px;
+}
+
+.tracklist ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.86rem;
+}
+
+.track {
+  display: grid;
+  grid-template-columns: 2.6em minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.heading {
+  padding: 14px 0 5px;
+  color: var(--text-faint);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.position {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.trackTitle {
+  min-width: 0;
+}
+
+.trackArtist {
+  color: var(--text-dim);
+}
+
+.duration {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.status {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 0.85rem;
+}
+
+.section {
+  margin-top: 22px;
+}
+
+.sectionTitle {
+  margin: 0 0 8px;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.videos {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.videos li {
+  padding: 3px 0;
+}
+
+.videos a {
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.videos a:hover {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 24px;
+}
+
+.primary {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5em 1.1em;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.actions a {
+  text-decoration: none;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+}
+
+@media (max-width: 720px) {
+  .backdrop {
+    padding: 0;
+    place-items: end stretch;
+  }
+
+  .panel {
+    grid-template-columns: 1fr;
+    /* Stacked, the panel itself scrolls, so rows must size to their content
+       rather than being capped the way the side-by-side layout needs. */
+    grid-template-rows: none;
+    gap: 18px;
+    width: 100%;
+    max-height: 92dvh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding: 20px;
+    overflow-y: auto;
+  }
+
+  .art {
+    width: min(200px, 45%);
+  }
+
+  .body {
+    overflow: visible;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop,
+  .panel {
+    animation: none;
+  }
+}
