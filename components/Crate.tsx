@@ -5,11 +5,13 @@ import { AlbumDetail } from "./AlbumDetail";
 import { CoverFlow, type CoverFlowHandle } from "./CoverFlow";
 import { PickerBar } from "./PickerBar";
 import { useCollection } from "@/hooks/useCollection";
-import { candidateIndices, pickIndex, rememberPick } from "@/lib/picker";
+import { matches, pickIndex, rememberPick } from "@/lib/picker";
 import styles from "./Crate.module.css";
 
 interface Props {
   username: string;
+  /** Browsing the shared demo collection rather than the visitor's own. */
+  demo?: boolean;
   onSignOut: () => void;
 }
 
@@ -19,14 +21,19 @@ interface OpenPanel {
   fromPick: boolean;
 }
 
-export function Crate({ username, onSignOut }: Props) {
+export function Crate({ username, demo = false, onSignOut }: Props) {
   const { albums, total, loading, error, unauthorized, refresh } =
     useCollection(username);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [panel, setPanel] = useState<OpenPanel | null>(null);
   const [spinning, setSpinning] = useState(false);
-  const [recent, setRecent] = useState<number[]>([]);
+  /**
+   * Recent picks are tracked by release id rather than by position, because
+   * positions are into the *filtered* list and shift the moment a genre chip
+   * is toggled.
+   */
+  const [recentIds, setRecentIds] = useState<number[]>([]);
   const [centre, setCentre] = useState(0);
 
   const coverFlow = useRef<CoverFlowHandle>(null);
@@ -36,10 +43,43 @@ export function Crate({ username, onSignOut }: Props) {
     if (unauthorized) onSignOut();
   }, [unauthorized, onSignOut]);
 
-  const matchCount = useMemo(
-    () => candidateIndices(albums, selected).length,
+  /** The carousel shows exactly what the filters select, nothing more. */
+  const visible = useMemo(
+    () => albums.filter((album) => matches(album, selected)),
     [albums, selected],
   );
+
+  const visibleRef = useRef(visible);
+  useEffect(() => {
+    visibleRef.current = visible;
+  }, [visible]);
+
+  // Which release is centred, so a filter change can keep it in view.
+  const centreIdRef = useRef<number | null>(null);
+  const handleCentreChange = useCallback((index: number) => {
+    setCentre(index);
+    centreIdRef.current = visibleRef.current[index]?.id ?? null;
+  }, []);
+
+  const filterKey = useMemo(() => [...selected].sort().join("|"), [selected]);
+  const lastFilterKey = useRef(filterKey);
+
+  /**
+   * After the visible set narrows or widens, stay on the record the user was
+   * looking at when it survived the change, and fall back to the start when it
+   * didn't. Deliberately keyed on the filter alone — collection pages arriving
+   * also change `visible`, and those must not yank the carousel around.
+   */
+  useEffect(() => {
+    if (lastFilterKey.current === filterKey) return;
+    lastFilterKey.current = filterKey;
+
+    setPanel(null);
+
+    const id = centreIdRef.current;
+    const next = id === null ? -1 : visible.findIndex((a) => a.id === id);
+    coverFlow.current?.goTo(next >= 0 ? next : 0, false);
+  }, [filterKey, visible]);
 
   const toggleTag = useCallback((tag: string) => {
     setSelected((current) => {
@@ -52,12 +92,16 @@ export function Crate({ username, onSignOut }: Props) {
   const clearTags = useCallback(() => setSelected(new Set()), []);
 
   const pick = useCallback(async () => {
-    if (spinning || !albums.length) return;
+    if (spinning || !visible.length) return;
 
-    const index = pickIndex(albums, {
-      selected,
-      exclude: [...recent, centre],
+    // Recent picks are ids; translate them into positions in the current view.
+    const recent = new Set(recentIds);
+    const exclude = [centre];
+    visible.forEach((album, index) => {
+      if (recent.has(album.id)) exclude.push(index);
     });
+
+    const index = pickIndex(visible, { exclude });
     if (index === null) return;
 
     setPanel(null);
@@ -67,9 +111,9 @@ export function Crate({ username, onSignOut }: Props) {
     } finally {
       setSpinning(false);
     }
-    setRecent((current) => rememberPick(current, index));
+    setRecentIds((current) => rememberPick(current, visible[index].id));
     setPanel({ index, fromPick: true });
-  }, [albums, centre, recent, selected, spinning]);
+  }, [centre, recentIds, spinning, visible]);
 
   const openCentre = useCallback((index: number) => {
     setPanel({ index, fromPick: false });
@@ -81,13 +125,15 @@ export function Crate({ username, onSignOut }: Props) {
   }, []);
 
   const loaded = albums.length;
-  const panelAlbum = panel ? albums[panel.index] : undefined;
+  const filtered = selected.size > 0;
+  const panelAlbum = panel ? visible[panel.index] : undefined;
 
   return (
     <div className={styles.app}>
       <header className={styles.header}>
         <div className={styles.brand}>
           <span className={styles.mark}>Crate</span>
+          {demo ? <span className={styles.badge}>Demo</span> : null}
           <span className={styles.user}>{username}</span>
         </div>
 
@@ -98,7 +144,11 @@ export function Crate({ username, onSignOut }: Props) {
               {total ? ` / ${total.toLocaleString()}` : ""}…
             </span>
           ) : (
-            <span>{loaded.toLocaleString()} records</span>
+            <span>
+              {filtered
+                ? `${visible.length.toLocaleString()} of ${loaded.toLocaleString()}`
+                : `${loaded.toLocaleString()} records`}
+            </span>
           )}
           <button
             type="button"
@@ -109,7 +159,7 @@ export function Crate({ username, onSignOut }: Props) {
             Refresh
           </button>
           <button type="button" className={styles.link} onClick={onSignOut}>
-            Sign out
+            {demo ? "Leave demo" : "Sign out"}
           </button>
         </div>
       </header>
@@ -139,16 +189,32 @@ export function Crate({ username, onSignOut }: Props) {
         </div>
       ) : (
         <>
-          <CoverFlow
-            ref={coverFlow}
-            albums={albums}
-            onCentreChange={setCentre}
-            onSelect={openCentre}
-          />
+          {visible.length === 0 ? (
+            <div className={styles.empty}>
+              <p>
+                Nothing matches those filters.{" "}
+                <button
+                  type="button"
+                  className={styles.link}
+                  onClick={clearTags}
+                >
+                  Clear them
+                </button>{" "}
+                to see the whole crate.
+              </p>
+            </div>
+          ) : (
+            <CoverFlow
+              albums={visible}
+              ref={coverFlow}
+              onCentreChange={handleCentreChange}
+              onSelect={openCentre}
+            />
+          )}
           <PickerBar
             albums={albums}
             selected={selected}
-            matchCount={matchCount}
+            matchCount={visible.length}
             spinning={spinning}
             onToggle={toggleTag}
             onClear={clearTags}

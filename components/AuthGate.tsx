@@ -7,27 +7,34 @@ const TOKEN_SETTINGS_URL = "https://www.discogs.com/settings/developers";
 
 interface Props {
   onSignIn: (token: string) => Promise<void>;
+  /** Only offered when the deployment has a demo collection configured. */
+  onStartDemo?: () => Promise<void>;
 }
 
-export function AuthGate({ onSignIn }: Props) {
+export function AuthGate({ onSignIn, onStartDemo }: Props) {
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"token" | "demo" | null>(null);
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    if (!token.trim() || busy) return;
+  async function run(action: "token" | "demo", work: () => Promise<void>) {
+    if (busy) return;
 
-    setBusy(true);
+    setBusy(action);
     setError(null);
     try {
-      await onSignIn(token.trim());
+      await work();
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Could not sign in to Discogs.",
       );
-      setBusy(false);
+      setBusy(null);
     }
+  }
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!token.trim()) return;
+    void run("token", () => onSignIn(token.trim()));
   }
 
   return (
@@ -53,12 +60,33 @@ export function AuthGate({ onSignIn }: Props) {
             placeholder="Paste your token"
             autoComplete="off"
             spellCheck={false}
-            disabled={busy}
+            disabled={busy !== null}
           />
-          <button className={styles.submit} type="submit" disabled={busy}>
-            {busy ? "Checking…" : "Open my crate"}
+          <button
+            className={styles.submit}
+            type="submit"
+            disabled={busy !== null}
+          >
+            {busy === "token" ? "Checking…" : "Open my crate"}
           </button>
         </form>
+
+        {onStartDemo ? (
+          <div className={styles.demo}>
+            <span className={styles.or}>or</span>
+            <button
+              type="button"
+              className={styles.demoButton}
+              disabled={busy !== null}
+              onClick={() => void run("demo", onStartDemo)}
+            >
+              {busy === "demo" ? "Loading…" : "Take a look around a demo crate"}
+            </button>
+            <p className={styles.demoNote}>
+              Browses a sample collection, no token needed.
+            </p>
+          </div>
+        ) : null}
 
         {error ? (
           <p className={styles.error} role="alert">

@@ -88,6 +88,51 @@
   cursor: default;
 }
 
+.demo {
+  margin-top: 22px;
+  text-align: center;
+}
+
+.or {
+  display: block;
+  margin-bottom: 14px;
+  color: var(--text-faint);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.demoButton {
+  width: 100%;
+  padding: 11px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.demoButton:hover:not(:disabled) {
+  background: var(--surface-strong);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.demoButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.demoNote {
+  margin: 8px 0 0;
+  color: var(--text-faint);
+  font-size: 0.78rem;
+}
+
 .error {
   margin: 14px 0 0;
   padding: 10px 12px;

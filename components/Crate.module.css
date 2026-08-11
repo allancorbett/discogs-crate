@@ -28,6 +28,18 @@
   color: var(--accent);
 }
 
+.badge {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-faint);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
 .user {
   color: var(--text-dim);
   font-size: 0.82rem;

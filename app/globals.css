@@ -92,11 +92,21 @@ input {
   cursor: default;
 }
 
-.pill[data-active="true"] {
+/*
+ * Also matched on :hover, because `.pill:hover:not(:disabled)` above is more
+ * specific than a plain attribute selector and would otherwise strip a
+ * selected chip's highlight the moment the pointer touched it.
+ */
+.pill[data-active="true"],
+.pill[data-active="true"]:hover {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-ink);
   font-weight: 550;
+}
+
+.pill[data-active="true"]:hover:not(:disabled) {
+  filter: brightness(1.08);
 }
 
 .visually-hidden {
