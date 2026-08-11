@@ -2,12 +2,12 @@ import {
   clearSession,
   getAuthStrategy,
   getSessionUsername,
+  isDemoConfigured,
+  isDemoSession,
 } from "@/lib/discogs/auth";
 import { DiscogsApiError } from "@/lib/discogs/client";
 import { fetchIdentity, fetchProfile } from "@/lib/discogs/collection";
 import type { SessionInfo } from "@/lib/discogs/types";
-
-const signedOut: SessionInfo = { authenticated: false };
 
 /**
  * Drives the sign-in gate on load. This does hit Discogs rather than trusting
@@ -16,8 +16,13 @@ const signedOut: SessionInfo = { authenticated: false };
  * breaking further in.
  */
 export async function GET(): Promise<Response> {
+  const demoAvailable = isDemoConfigured();
+  const signedOut: SessionInfo = { authenticated: false, demoAvailable };
+
   const auth = await getAuthStrategy();
   if (!auth) return Response.json(signedOut);
+
+  const demo = await isDemoSession();
 
   try {
     const username =
@@ -28,6 +33,8 @@ export async function GET(): Promise<Response> {
       authenticated: true,
       username,
       avatarUrl: profile.avatar_url,
+      demo,
+      demoAvailable,
     } satisfies SessionInfo);
   } catch (error) {
     if (
@@ -42,7 +49,9 @@ export async function GET(): Promise<Response> {
     console.error("Session check failed", error);
     const username = await getSessionUsername();
     return Response.json(
-      username ? { authenticated: true, username } : signedOut,
+      username
+        ? { authenticated: true, username, demo, demoAvailable }
+        : signedOut,
     );
   }
 }

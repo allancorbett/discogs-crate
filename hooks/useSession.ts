@@ -8,6 +8,8 @@ interface UseSession {
   /** True until the initial session check resolves. */
   checking: boolean;
   signIn: (token: string) => Promise<void>;
+  /** Browse the deployment's shared demo collection instead of signing in. */
+  startDemo: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -58,10 +60,24 @@ export function useSession(): UseSession {
     setSession((await response.json()) as SessionInfo);
   }, []);
 
-  const signOut = useCallback(async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    setSession({ authenticated: false });
+  const startDemo = useCallback(async () => {
+    const response = await fetch("/api/auth/demo", { method: "POST" });
+
+    if (!response.ok) {
+      throw new Error(await readError(response, "The demo is unavailable."));
+    }
+
+    setSession((await response.json()) as SessionInfo);
   }, []);
 
-  return { session, checking, signIn, signOut };
+  const signOut = useCallback(async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    // Keep demoAvailable so the gate still offers the demo after signing out.
+    setSession((current) => ({
+      authenticated: false,
+      demoAvailable: current?.demoAvailable,
+    }));
+  }, []);
+
+  return { session, checking, signIn, startDemo, signOut };
 }

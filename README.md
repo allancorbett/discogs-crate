@@ -21,9 +21,29 @@ httpOnly cookie that client-side JavaScript cannot read.
 
 ### Environment
 
-| Variable              | Required | Purpose                                                                    |
-| --------------------- | -------- | -------------------------------------------------------------------------- |
-| `DISCOGS_USER_AGENT`  | No       | Sent on every Discogs request. Defaults to a generic string; set it to something identifying your deployment, e.g. `Crate/1.0 +https://crate.example.com`. |
+| Variable             | Required | Purpose                                                                                                                                                   |
+| -------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DISCOGS_USER_AGENT` | No       | Sent on every Discogs request. Defaults to a generic string; set it to something identifying your deployment, e.g. `Crate/1.0 +https://crate.example.com`. |
+| `DISCOGS_DEMO_TOKEN` | No       | Enables the demo (see below). Leave unset and the demo button never appears.                                                                              |
+
+### Demo mode
+
+Setting `DISCOGS_DEMO_TOKEN` to a personal access token adds a **Take a look
+around a demo crate** button to the sign-in screen, so someone can try the app
+without generating a token of their own. Sessions started that way are marked
+with a `Demo` badge.
+
+The token stays on the server. The demo session cookie holds only a marker, and
+the credential is resolved from the environment on each request — `httpOnly`
+stops *scripts* reading a cookie, but any visitor can read a cookie's value out
+of devtools, so a token placed there would be handed to everyone who tried the
+demo.
+
+Worth knowing before switching it on: anyone using the demo sees that account's
+username and entire collection, and spends its Discogs rate limit (60
+requests/minute) — a busy demo will throttle. A Discogs personal access token
+also grants **write** access to the account it belongs to, so prefer a token
+from a secondary account, and never commit the value.
 
 ## How it fits together
 

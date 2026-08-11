@@ -185,4 +185,8 @@ export interface SessionInfo {
   authenticated: boolean;
   username?: string;
   avatarUrl?: string;
+  /** This session is browsing the shared demo collection, not the user's own. */
+  demo?: boolean;
+  /** Whether a demo is offered at all, so the sign-in gate knows to show it. */
+  demoAvailable?: boolean;
 }

@@ -105,9 +105,10 @@ export function PickerBar({
 
       {filtered ? (
         <p className={styles.summary}>
-          {matchCount === 0
-            ? "Nothing in your collection matches that."
-            : `Picking from ${matchCount.toLocaleString()} record${matchCount === 1 ? "" : "s"}.`}{" "}
+          {/* The carousel is filtered too, so the count reads off the header
+              rather than being repeated here. */}
+          Showing {matchCount.toLocaleString()} record
+          {matchCount === 1 ? "" : "s"}.{" "}
           <button type="button" className={styles.clear} onClick={onClear}>
             Clear filters
           </button>
