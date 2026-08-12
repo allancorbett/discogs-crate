@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { SORT_MODES, type SortMode } from "@/lib/ordering";
 import { facetsOf } from "@/lib/picker";
 import type { Album } from "@/lib/discogs/types";
 import styles from "./PickerBar.module.css";
@@ -12,20 +13,24 @@ const STYLE_LIMIT = 24;
 interface Props {
   albums: Album[];
   selected: Set<string>;
+  sort: SortMode;
   matchCount: number;
   spinning: boolean;
   onToggle: (tag: string) => void;
   onClear: () => void;
+  onSort: (mode: SortMode) => void;
   onPick: () => void;
 }
 
 export function PickerBar({
   albums,
   selected,
+  sort,
   matchCount,
   spinning,
   onToggle,
   onClear,
+  onSort,
   onPick,
 }: Props) {
   const [showStyles, setShowStyles] = useState(false);
@@ -81,9 +86,36 @@ export function PickerBar({
         </div>
       </div>
 
+      <div className={`${styles.row} ${styles.orderRow}`}>
+        <span className={styles.label} aria-hidden="true">
+          Order
+        </span>
+        <div
+          className={`${styles.chips} ${styles.wrapRow}`}
+          role="group"
+          aria-label="Order the crate"
+        >
+          {SORT_MODES.map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              className="pill"
+              data-active={sort === mode.id}
+              aria-pressed={sort === mode.id}
+              onClick={() => onSort(mode.id)}
+            >
+              {/* Picking shuffle again re-deals, so say so once it's on. */}
+              {mode.id === "shuffle" && sort === "shuffle"
+                ? "Shuffle again"
+                : mode.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {showStyles ? (
         <div
-          className={`${styles.chips} ${styles.styleRow}`}
+          className={`${styles.chips} ${styles.wrapRow} ${styles.styleRow}`}
           role="group"
           aria-label="Filter by style"
         >

@@ -5,6 +5,7 @@ import { AlbumDetail } from "./AlbumDetail";
 import { CoverFlow, type CoverFlowHandle } from "./CoverFlow";
 import { PickerBar } from "./PickerBar";
 import { useCollection } from "@/hooks/useCollection";
+import { orderAlbums, type SortMode } from "@/lib/ordering";
 import { matches, pickIndex, rememberPick } from "@/lib/picker";
 import styles from "./Crate.module.css";
 
@@ -26,6 +27,13 @@ export function Crate({ username, demo = false, onSignOut }: Props) {
     useCollection(username);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [sort, setSort] = useState<SortMode>("artist");
+  /**
+   * Only meaningful in shuffle mode. Seeded from a constant rather than
+   * Math.random so the first render matches on the server, and re-rolled the
+   * moment the user actually asks to shuffle.
+   */
+  const [shuffleSeed, setShuffleSeed] = useState(1);
   const [panel, setPanel] = useState<OpenPanel | null>(null);
   const [spinning, setSpinning] = useState(false);
   /**
@@ -43,10 +51,18 @@ export function Crate({ username, demo = false, onSignOut }: Props) {
     if (unauthorized) onSignOut();
   }, [unauthorized, onSignOut]);
 
-  /** The carousel shows exactly what the filters select, nothing more. */
+  /**
+   * The crate shows exactly what the filters select, nothing more, filed in
+   * whichever order is on.
+   */
   const visible = useMemo(
-    () => albums.filter((album) => matches(album, selected)),
-    [albums, selected],
+    () =>
+      orderAlbums(
+        albums.filter((album) => matches(album, selected)),
+        sort,
+        shuffleSeed,
+      ),
+    [albums, selected, sort, shuffleSeed],
   );
 
   const visibleRef = useRef(visible);
@@ -61,25 +77,30 @@ export function Crate({ username, demo = false, onSignOut }: Props) {
     centreIdRef.current = visibleRef.current[index]?.id ?? null;
   }, []);
 
-  const filterKey = useMemo(() => [...selected].sort().join("|"), [selected]);
-  const lastFilterKey = useRef(filterKey);
+  /** Everything the user can change that moves records around in `visible`. */
+  const viewKey = useMemo(() => {
+    const deal = sort === "shuffle" ? shuffleSeed : "";
+    return [sort, deal, ...[...selected].sort()].join("|");
+  }, [selected, sort, shuffleSeed]);
+  const lastViewKey = useRef(viewKey);
 
   /**
-   * After the visible set narrows or widens, stay on the record the user was
-   * looking at when it survived the change, and fall back to the start when it
-   * didn't. Deliberately keyed on the filter alone — collection pages arriving
-   * also change `visible`, and those must not yank the carousel around.
+   * After the visible set is re-filtered or re-filed, stay on the record the
+   * user was looking at when it survived the change, and fall back to the start
+   * when it didn't. Deliberately keyed on the filter and order alone —
+   * collection pages arriving also change `visible`, and those must not yank
+   * the crate around.
    */
   useEffect(() => {
-    if (lastFilterKey.current === filterKey) return;
-    lastFilterKey.current = filterKey;
+    if (lastViewKey.current === viewKey) return;
+    lastViewKey.current = viewKey;
 
     setPanel(null);
 
     const id = centreIdRef.current;
     const next = id === null ? -1 : visible.findIndex((a) => a.id === id);
     coverFlow.current?.goTo(next >= 0 ? next : 0, false);
-  }, [filterKey, visible]);
+  }, [viewKey, visible]);
 
   const toggleTag = useCallback((tag: string) => {
     setSelected((current) => {
@@ -90,6 +111,17 @@ export function Crate({ username, demo = false, onSignOut }: Props) {
   }, []);
 
   const clearTags = useCallback(() => setSelected(new Set()), []);
+
+  /**
+   * Choosing shuffle — including choosing it while it is already on — deals a
+   * fresh order, so the button doubles as "shuffle again".
+   */
+  const chooseSort = useCallback((mode: SortMode) => {
+    if (mode === "shuffle") {
+      setShuffleSeed(Math.floor(Math.random() * 0x7fffffff) + 1);
+    }
+    setSort(mode);
+  }, []);
 
   const pick = useCallback(async () => {
     if (spinning || !visible.length) return;
@@ -214,10 +246,12 @@ export function Crate({ username, demo = false, onSignOut }: Props) {
           <PickerBar
             albums={albums}
             selected={selected}
+            sort={sort}
             matchCount={visible.length}
             spinning={spinning}
             onToggle={toggleTag}
             onClear={clearTags}
+            onSort={chooseSort}
             onPick={pick}
           />
         </>

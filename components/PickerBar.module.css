@@ -52,11 +52,29 @@
   display: none;
 }
 
-.styleRow {
-  margin-top: 8px;
+.orderRow {
+  margin-top: 10px;
+  gap: 10px;
+}
+
+.label {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+/* Short enough to wrap rather than scroll, so no overflow fade is wanted. */
+.wrapRow {
   flex-wrap: wrap;
   overflow: visible;
   mask-image: none;
+}
+
+.styleRow {
+  margin-top: 8px;
 }
 
 .count {
@@ -90,6 +108,13 @@
   .row {
     flex-direction: column;
     align-items: stretch;
+    gap: 10px;
+  }
+
+  /* The order pills stay beside their label; only the pick row needs stacking. */
+  .orderRow {
+    flex-direction: row;
+    align-items: center;
     gap: 10px;
   }
 

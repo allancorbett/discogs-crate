@@ -1,8 +1,8 @@
 # Crate
 
-Browse your Discogs collection as a CoverFlow-style carousel, or let it pick a
-record for you — at random, or narrowed to the genres and styles you're in the
-mood for.
+Browse your Discogs collection as a CoverFlow-style carousel — filed by artist,
+year or genre, or shuffled — and let it pick a record for you, at random or
+narrowed to the genres and styles you're in the mood for.
 
 Next.js (App Router) + TypeScript, deployable to Vercel as-is.
 
@@ -105,6 +105,7 @@ lib/discogs/client.ts      fetch wrapper: User-Agent, credential, 429 backoff
 lib/discogs/collection.ts  paging and normalization to `Album`
 lib/coverflow.ts           carousel geometry and index maths (pure)
 lib/coverflowEngine.ts     the carousel's DOM/animation controller
+lib/ordering.ts            artist / year / genre / shuffle ordering (pure)
 lib/picker.ts              genre filtering and random choice (pure)
 ```
 
@@ -144,6 +145,21 @@ swap per cover crossed, rather than one per slot per step.
 Reflections use `-webkit-box-reflect` (Chrome, Safari, Edge). Firefox has no
 equivalent, so it falls back to a mirrored, masked copy of the artwork.
 
+### Ordering
+
+`lib/ordering.ts` files the collection by artist, year or genre, or shuffles it.
+Every mode falls through the same tiebreakers, so the result is fully
+determined — no record drifting position between renders. Artists are filed the
+way a record shop does it, ignoring leading articles, and undated or untagged
+releases go at the end rather than at the front.
+
+Shuffle places each record by hashing its own id against the seed rather than
+walking the array. The collection arrives a page at a time, and a Fisher–Yates
+shuffle would re-deal everything on each arrival, yanking the covers out from
+under whoever is browsing. Hashing leaves the records already on screen in
+the same relative order and slots the new ones in among them; re-rolling the
+seed re-deals everything, which is what pressing shuffle again should do.
+
 ## Tests
 
 ```bash
@@ -151,9 +167,9 @@ npm test
 ```
 
 Covers the pure layers: carousel geometry and wrapping, slot recycling, spin
-planning, genre filtering and picking, and collection normalization — including
-Discogs quirks like the `(2)` disambiguator in "Nirvana (2)" and `year: 0`
-meaning "unknown".
+planning, ordering and shuffling, genre filtering and picking, and collection
+normalization — including Discogs quirks like the `(2)` disambiguator in
+"Nirvana (2)" and `year: 0` meaning "unknown".
 
 The OAuth signer is tested too: RFC 3986 percent-encoding, signature base string
 construction (parameter sorting, repeated keys, query strings excluded from the
