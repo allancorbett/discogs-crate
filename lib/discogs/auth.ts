@@ -1,4 +1,9 @@
 import { cookies } from "next/headers";
+import {
+  type OAuthConsumer,
+  oauthAuthorizationHeader,
+  oauthConsumer,
+} from "./oauth";
 
 /**
  * The seam between this app and Discogs' two authentication schemes.
@@ -27,9 +32,36 @@ export class PersonalTokenStrategy implements AuthStrategy {
   }
 }
 
+/**
+ * A user who signed in through the OAuth 1.0a flow. Unlike the token strategy,
+ * this one genuinely needs both arguments: an OAuth 1.0a signature is computed
+ * over the request's method and full URL, so every call gets its own header.
+ */
+export class OAuth1Strategy implements AuthStrategy {
+  constructor(
+    private readonly consumer: OAuthConsumer,
+    private readonly token: string,
+    private readonly tokenSecret: string,
+  ) {}
+
+  authHeader(method: string, url: string): Promise<string> {
+    return oauthAuthorizationHeader({
+      method,
+      url,
+      consumer: this.consumer,
+      token: this.token,
+      tokenSecret: this.tokenSecret,
+    });
+  }
+}
+
 export const SESSION_COOKIE = "discogs_token";
 export const USER_COOKIE = "discogs_user";
 export const DEMO_COOKIE = "discogs_demo";
+export const OAUTH_TOKEN_COOKIE = "discogs_oauth_token";
+export const OAUTH_SECRET_COOKIE = "discogs_oauth_secret";
+/** Holds the *request* token secret for the few seconds the flow is in flight. */
+export const OAUTH_PENDING_COOKIE = "discogs_oauth_pending";
 
 /** A year. Discogs personal tokens do not expire on their own. */
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
@@ -90,11 +122,74 @@ export async function setDemoSession(username: string): Promise<void> {
   store.set(USER_COOKIE, username, { ...base, httpOnly: false });
 }
 
+/** Stores the access token from a completed OAuth flow. */
+export async function setOAuthSession(
+  token: string,
+  tokenSecret: string,
+  username: string,
+): Promise<void> {
+  const store = await cookies();
+  const base = {
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: COOKIE_MAX_AGE,
+  };
+  store.set(OAUTH_TOKEN_COOKIE, token, { ...base, httpOnly: true });
+  store.set(OAUTH_SECRET_COOKIE, tokenSecret, { ...base, httpOnly: true });
+  store.set(USER_COOKIE, username, { ...base, httpOnly: false });
+  store.delete(OAUTH_PENDING_COOKIE);
+}
+
+/**
+ * Parks the in-flight request token while the user is away at Discogs
+ * approving the app. Short-lived: if they never come back, it should not
+ * linger.
+ */
+export async function setPendingOAuth(
+  token: string,
+  tokenSecret: string,
+): Promise<void> {
+  const store = await cookies();
+  store.set(OAUTH_PENDING_COOKIE, `${token}:${tokenSecret}`, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 15 * 60,
+  });
+}
+
+export async function takePendingOAuth(): Promise<{
+  token: string;
+  tokenSecret: string;
+} | null> {
+  const store = await cookies();
+  const raw = store.get(OAUTH_PENDING_COOKIE)?.value;
+  if (!raw) return null;
+
+  const separator = raw.indexOf(":");
+  if (separator < 1) return null;
+
+  return {
+    token: raw.slice(0, separator),
+    tokenSecret: raw.slice(separator + 1),
+  };
+}
+
+export async function clearPendingOAuth(): Promise<void> {
+  const store = await cookies();
+  store.delete(OAUTH_PENDING_COOKIE);
+}
+
 export async function clearSession(): Promise<void> {
   const store = await cookies();
   store.delete(SESSION_COOKIE);
   store.delete(USER_COOKIE);
   store.delete(DEMO_COOKIE);
+  store.delete(OAUTH_TOKEN_COOKIE);
+  store.delete(OAUTH_SECRET_COOKIE);
+  store.delete(OAUTH_PENDING_COOKIE);
 }
 
 export async function isDemoSession(): Promise<boolean> {
@@ -105,12 +200,20 @@ export async function isDemoSession(): Promise<boolean> {
 /**
  * Returns null when the visitor has not authenticated yet.
  *
- * A visitor's own token takes precedence over the demo, so signing in properly
- * while a demo cookie lingers does what you'd expect. The demo token is
- * resolved from the environment here, per request, and never leaves the server.
+ * Order matters: a real sign-in — OAuth first, then a pasted token — always
+ * beats a lingering demo cookie, so signing in properly does what you'd expect
+ * without having to leave the demo first. The demo token is resolved from the
+ * environment here, per request, and never leaves the server.
  */
 export async function getAuthStrategy(): Promise<AuthStrategy | null> {
   const store = await cookies();
+
+  const oauthToken = store.get(OAUTH_TOKEN_COOKIE)?.value;
+  const oauthSecret = store.get(OAUTH_SECRET_COOKIE)?.value;
+  const consumer = oauthConsumer();
+  if (oauthToken && oauthSecret && consumer) {
+    return new OAuth1Strategy(consumer, oauthToken, oauthSecret);
+  }
 
   const token = store.get(SESSION_COOKIE)?.value;
   if (token) return new PersonalTokenStrategy(token);
@@ -122,6 +225,10 @@ export async function getAuthStrategy(): Promise<AuthStrategy | null> {
   }
 
   return null;
+}
+
+export function isOAuthConfigured(): boolean {
+  return oauthConsumer() !== null;
 }
 
 export async function getSessionUsername(): Promise<string | null> {

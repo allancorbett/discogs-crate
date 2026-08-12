@@ -4,6 +4,7 @@ import {
   getSessionUsername,
   isDemoConfigured,
   isDemoSession,
+  isOAuthConfigured,
 } from "@/lib/discogs/auth";
 import { DiscogsApiError } from "@/lib/discogs/client";
 import { fetchIdentity, fetchProfile } from "@/lib/discogs/collection";
@@ -17,7 +18,12 @@ import type { SessionInfo } from "@/lib/discogs/types";
  */
 export async function GET(): Promise<Response> {
   const demoAvailable = isDemoConfigured();
-  const signedOut: SessionInfo = { authenticated: false, demoAvailable };
+  const oauthAvailable = isOAuthConfigured();
+  const signedOut: SessionInfo = {
+    authenticated: false,
+    demoAvailable,
+    oauthAvailable,
+  };
 
   const auth = await getAuthStrategy();
   if (!auth) return Response.json(signedOut);
@@ -35,6 +41,7 @@ export async function GET(): Promise<Response> {
       avatarUrl: profile.avatar_url,
       demo,
       demoAvailable,
+      oauthAvailable,
     } satisfies SessionInfo);
   } catch (error) {
     if (
@@ -50,7 +57,7 @@ export async function GET(): Promise<Response> {
     const username = await getSessionUsername();
     return Response.json(
       username
-        ? { authenticated: true, username, demo, demoAvailable }
+        ? { authenticated: true, username, demo, demoAvailable, oauthAvailable }
         : signedOut,
     );
   }

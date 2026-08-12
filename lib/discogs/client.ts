@@ -30,7 +30,7 @@ export interface RateLimit {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function userAgent(): string {
+export function userAgent(): string {
   return process.env.DISCOGS_USER_AGENT?.trim() || DEFAULT_USER_AGENT;
 }
 

@@ -72,10 +72,12 @@ export function useSession(): UseSession {
 
   const signOut = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
-    // Keep demoAvailable so the gate still offers the demo after signing out.
+    // Keep the deployment's capabilities so the gate still offers the same
+    // sign-in options after signing out.
     setSession((current) => ({
       authenticated: false,
       demoAvailable: current?.demoAvailable,
+      oauthAvailable: current?.oauthAvailable,
     }));
   }, []);
 

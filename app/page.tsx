@@ -1,30 +1,30 @@
-"use client";
+import { CrateApp } from "@/components/CrateApp";
 
-import { AuthGate } from "@/components/AuthGate";
-import { Crate } from "@/components/Crate";
-import { useSession } from "@/hooks/useSession";
+/** Messages for the reasons the OAuth routes can bounce someone back here. */
+const OAUTH_ERRORS: Record<string, string> = {
+  oauth_declined: "You cancelled the Discogs sign-in.",
+  oauth_expired: "That sign-in took too long. Please try again.",
+  oauth_mismatch: "That sign-in didn't match this browser. Please try again.",
+  oauth_failed: "Discogs couldn't complete the sign-in. Please try again.",
+  oauth_unconfigured: "Discogs sign-in isn't set up on this deployment.",
+};
 
-export default function Home() {
-  const { session, checking, signIn, startDemo, signOut } = useSession();
-
-  // Nothing renders during the session check — it's a single fast request, and
-  // flashing the sign-in form at a returning user is worse than a blank beat.
-  if (checking || !session) return null;
-
-  if (!session.authenticated || !session.username) {
-    return (
-      <AuthGate
-        onSignIn={signIn}
-        onStartDemo={session.demoAvailable ? startDemo : undefined}
-      />
-    );
-  }
+/**
+ * A server component purely so the OAuth routes' `?error=` redirect can be
+ * read here and handed down. Doing it on the client would mean reading the URL
+ * after mount, which is both an extra render and a hydration mismatch.
+ */
+export default async function Home({ searchParams }: PageProps<"/">) {
+  const { error } = await searchParams;
+  const reason = typeof error === "string" ? error : undefined;
 
   return (
-    <Crate
-      username={session.username}
-      demo={session.demo ?? false}
-      onSignOut={signOut}
+    <CrateApp
+      signInError={
+        reason
+          ? (OAUTH_ERRORS[reason] ?? "Discogs sign-in failed. Please try again.")
+          : undefined
+      }
     />
   );
 }
