@@ -26,6 +26,10 @@ function listenLinks(album: Album) {
       href: `https://music.apple.com/search?term=${encodeURIComponent(query)}`,
     },
     {
+      label: "Qobuz",
+      href: `https://www.qobuz.com/search?q=${encodeURIComponent(query)}`,
+    },
+    {
       label: "YouTube",
       href: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
     },
