@@ -1,67 +1,32 @@
 /**
- * Pure geometry and index maths for the crate carousel. Kept free of DOM
+ * Pure geometry and index maths for the CoverFlow carousel. Kept free of DOM
  * access so the awkward parts — slot recycling, wrapping, easing — can be
  * reasoned about and tested on their own.
- *
- * The stack runs vertically: the centred record stands square-on, the ones
- * behind it lean back above, the ones already flipped past lean back below.
- * That's the read of a record crate tipped towards you, rather than the
- * left-to-right shelf the horizontal cover flow drew.
  */
 
-/**
- * How many cover elements exist in the DOM, regardless of collection size.
- * Only needs to cover the centre plus everything before the fade completes —
- * see FADE_END — with a slot to spare at each end.
- */
-export const SLOT_COUNT = 15;
+/** How many cover elements exist in the DOM, regardless of collection size. */
+export const SLOT_COUNT = 23;
 
 export interface Geometry {
-  /** Vertical offset in cover-heights, positive downwards. */
-  y: number;
-  /** Depth in pixels; the covers above and below sit behind the centre one. */
+  /** Horizontal offset in cover-widths. */
+  x: number;
+  /** Depth in pixels; side covers sit behind the centre one. */
   z: number;
-  /**
-   * X rotation in degrees, positive so the top edge leans away from the
-   * viewer. The same sign above and below the centre — the stack leans one
-   * way, like records in a crate, and is never mirrored about the middle.
-   */
+  /** Y rotation in degrees. */
   rotate: number;
   scale: number;
   opacity: number;
   zIndex: number;
 }
 
-/*
- * Depth does the work here, not rotation.
- *
- * An earlier version fanned the stack with a steep rotateX that was mirrored
- * about the centre — covers above tipped one way, covers below the opposite
- * way. Two things were wrong with that. The mirrored halves read as a
- * *reflection* of the stack rather than as more records, and a cover crossing
- * the centre swung through twice the angle, which reads as spinning end over
- * end rather than as being flipped past.
- *
- * So: every off-centre cover leans back by the *same* modest angle, and only
- * the centred one is pulled upright. Nothing is mirrored, nothing rotates far,
- * and the dominant change as the stack moves is depth — each sleeve is pulled
- * towards you as it becomes current and pushed away again as it passes, the
- * way it looks to flip through a crate in a record shop.
- *
- * Vertical room is the scarce dimension in a browser window, so the stack has
- * to stay inside roughly one cover-height either side of the centre — see the
- * corresponding test — or covers get clipped at the edge of the stage instead
- * of fading there.
- */
-const CENTRE_GAP = 0.22; // gap between the centre cover and the first one out
-const SIDE_STEP = 0.09; // additional offset per cover further out
-const SIDE_COMPRESSION = 0.9; // <1 packs distant covers tighter
-const LEAN = 13; // degrees every off-centre cover leans back by
-const CENTRE_DEPTH = 115; // px the neighbours sit behind the centre cover
-const FAR_DEPTH = 26; // additional px per cover beyond the first
-const CENTRE_LIFT = 0.08; // extra scale on the centre cover
-const FADE_START = 3.2; // covers begin fading this far out…
-const FADE_END = 6; // …and are fully transparent here
+const CENTRE_GAP = 0.58; // gap between the centre cover and the first side one
+const SIDE_STEP = 0.3; // additional offset per cover further out
+const SIDE_COMPRESSION = 0.72; // <1 packs distant covers tighter, as iTunes did
+const ANGLE = 62; // degrees the side covers are turned by
+const DEPTH = 190; // px the side stacks sit behind the centre cover
+const CENTRE_LIFT = 0.14; // extra scale on the centre cover
+const FADE_START = 6; // covers begin fading this far out…
+const FADE_END = 10.5; // …and are fully transparent here
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -89,37 +54,31 @@ export function slotPosition(
 }
 
 /**
- * Places a cover from its signed distance to the centre — positive for records
- * further down the crate. Distance is fractional, so covers interpolate
- * smoothly between states instead of snapping as the centre changes.
+ * Places a cover from its signed distance to the centre. Distance is
+ * fractional, so covers interpolate smoothly between states instead of
+ * snapping as the centre changes.
  */
 export function geometryFor(distance: number): Geometry {
   const inner = clamp(distance, -1, 1);
   const outer = distance - inner;
   const magnitude = Math.abs(distance);
-  /** 0 while centred, 1 once a full step out. */
-  const settled = Math.min(magnitude, 1);
 
-  const y =
+  const x =
     inner * CENTRE_GAP +
     Math.sign(outer) * SIDE_STEP * Math.abs(outer) ** SIDE_COMPRESSION;
 
   const fade = 1 - (magnitude - FADE_START) / (FADE_END - FADE_START);
 
   return {
-    y,
-    // Depth is the main event: the centred cover sits at the front and every
-    // other one is pushed back, so scrolling pulls each sleeve towards the
-    // viewer and away again. The extra depth per cover further out also keeps
-    // the browser's own 3D sorting in agreement with zIndex, instead of
-    // leaving coplanar covers to paint in an arbitrary order.
-    z: -CENTRE_DEPTH * settled - FAR_DEPTH * Math.abs(outer),
-    // Deliberately *not* mirrored about the centre — the same lean above and
-    // below. A positive rotateX swings the top edge away from the viewer,
-    // which is how a record sits in a crate. Only the centred cover comes
-    // upright.
-    rotate: LEAN * settled,
-    scale: 1 + CENTRE_LIFT * (1 - settled),
+    x,
+    // The small extra depth per cover further out keeps the browser's own 3D
+    // sorting in agreement with zIndex, instead of leaving coplanar covers to
+    // paint in an arbitrary order.
+    z: -DEPTH * Math.abs(inner) - 2 * Math.abs(outer),
+    // Side covers turn to face outward, so the edge nearest the centre reads
+    // as closest to the viewer — the classic fanned-stack look.
+    rotate: inner * ANGLE,
+    scale: 1 + CENTRE_LIFT * (1 - Math.abs(inner)),
     opacity: clamp(fade, 0, 1),
     zIndex: 1000 - Math.round(magnitude * 10),
   };

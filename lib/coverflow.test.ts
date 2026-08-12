@@ -58,85 +58,48 @@ describe("slotPosition", () => {
 describe("geometryFor", () => {
   it("leaves the centre cover square-on and largest", () => {
     const centre = geometryFor(0);
-    expect(centre.y).toBe(0);
+    expect(centre.x).toBe(0);
+    expect(centre.rotate).toBe(0);
     // toBeCloseTo, because negating zero gives -0 and Object.is minds.
-    expect(centre.rotate).toBeCloseTo(0);
     expect(centre.z).toBeCloseTo(0);
     expect(centre.scale).toBeGreaterThan(1);
     expect(centre.opacity).toBe(1);
   });
 
-  it("stacks below the centre for later records and above for earlier ones", () => {
-    expect(geometryFor(2).y).toBeGreaterThan(0);
-    expect(geometryFor(-2).y).toBeLessThan(0);
+  it("mirrors the two sides", () => {
+    const left = geometryFor(-3);
+    const right = geometryFor(3);
+    expect(left.x).toBeCloseTo(-right.x);
+    expect(left.rotate).toBeCloseTo(-right.rotate);
+    expect(left.z).toBeCloseTo(right.z);
   });
 
-  it("spreads the stack symmetrically but does not mirror it", () => {
-    const above = geometryFor(-3);
-    const below = geometryFor(3);
-    expect(above.y).toBeCloseTo(-below.y);
-    expect(above.z).toBeCloseTo(below.z);
-    // Mirroring the lean is what made the lower half read as a reflection of
-    // the upper one, so both halves lean the same way instead.
-    expect(above.rotate).toBeCloseTo(below.rotate);
-  });
-
-  it("leans every off-centre cover back, above and below alike", () => {
-    // A positive rotateX swings the top edge away from the viewer — how a
-    // record leans in a crate.
-    expect(geometryFor(1).rotate).toBeGreaterThan(0);
-    expect(geometryFor(-1).rotate).toBeGreaterThan(0);
-  });
-
-  it("leans gently, so a cover crossing the centre doesn't read as spinning", () => {
+  it("turns side covers to a fixed angle once clear of the centre", () => {
     expect(geometryFor(1).rotate).toBe(geometryFor(6).rotate);
-    // The whole sweep a cover turns through as it passes the centre.
-    const sweep = geometryFor(-1).rotate + geometryFor(1).rotate;
-    expect(sweep).toBeLessThan(45);
-  });
-
-  it("pulls the centred cover forward and pushes the rest back", () => {
-    // Depth carries the motion: this is what makes it read as flipping through
-    // a crate rather than as a fan opening and closing.
-    expect(geometryFor(0).z).toBeCloseTo(0);
-    expect(geometryFor(1).z).toBeLessThan(-100);
-    expect(geometryFor(2).z).toBeLessThan(geometryFor(1).z);
-    expect(geometryFor(-2).z).toBeLessThan(geometryFor(-1).z);
+    expect(Math.abs(geometryFor(1).rotate)).toBeGreaterThan(45);
   });
 
   it("interpolates rather than snapping between states", () => {
     const half = geometryFor(0.5);
     expect(half.rotate).toBeGreaterThan(0);
     expect(half.rotate).toBeLessThan(geometryFor(1).rotate);
-    expect(half.y).toBeGreaterThan(0);
-    expect(half.y).toBeLessThan(geometryFor(1).y);
-    expect(half.z).toBeLessThan(0);
-    expect(half.z).toBeGreaterThan(geometryFor(1).z);
+    expect(half.x).toBeGreaterThan(0);
+    expect(half.x).toBeLessThan(geometryFor(1).x);
   });
 
-  it("moves covers monotonically down the stack", () => {
+  it("moves covers monotonically outwards", () => {
     let previous = 0;
     for (let distance = 0.25; distance < 11; distance += 0.25) {
-      const { y } = geometryFor(distance);
-      expect(y).toBeGreaterThan(previous);
-      previous = y;
+      const { x } = geometryFor(distance);
+      expect(x).toBeGreaterThan(previous);
+      previous = x;
     }
   });
 
   it("packs distant covers progressively tighter", () => {
-    const near = geometryFor(3).y - geometryFor(2).y;
-    const far = geometryFor(11).y - geometryFor(10).y;
+    const near = geometryFor(3).x - geometryFor(2).x;
+    const far = geometryFor(11).x - geometryFor(10).x;
     expect(far).toBeLessThan(near);
-  });
-
-  it("keeps every visible cover within about one cover-height of the centre", () => {
-    // Vertical room is scarce. Once a cover has faded out it may be clipped,
-    // but everything still visible has to fit inside the stage, or covers
-    // vanish at its edge instead of fading there.
-    for (let distance = 0; distance < 40; distance += 0.05) {
-      const { y, opacity } = geometryFor(distance);
-      if (opacity > 0) expect(y).toBeLessThanOrEqual(1.15);
-    }
   });
 
   it("paints covers nearer the centre in front", () => {
@@ -145,15 +108,10 @@ describe("geometryFor", () => {
   });
 
   it("fades the window edge out instead of popping it", () => {
-    expect(geometryFor(2).opacity).toBe(1);
-    expect(geometryFor(8).opacity).toBe(0);
-    expect(geometryFor(4).opacity).toBeGreaterThan(0);
-    expect(geometryFor(4).opacity).toBeLessThan(1);
-  });
-
-  it("has faded out well before a slot is recycled to the other end", () => {
-    // Slots wrap at half a window; anything still visible there would jump.
-    expect(geometryFor(SLOT_COUNT / 2).opacity).toBe(0);
+    expect(geometryFor(4).opacity).toBe(1);
+    expect(geometryFor(11).opacity).toBe(0);
+    expect(geometryFor(8).opacity).toBeGreaterThan(0);
+    expect(geometryFor(8).opacity).toBeLessThan(1);
   });
 });
 

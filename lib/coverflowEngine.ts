@@ -11,21 +11,20 @@ import {
 import type { Album } from "./discogs/types";
 
 /**
- * The crate motion engine.
+ * The CoverFlow motion engine.
  *
  * This is deliberately plain DOM code rather than React. The carousel updates
  * every slot's transform on every animation frame, and routing that through
  * React state would mean a full render per frame during a drag or spin. React
  * owns the markup; this owns everything that moves.
- *
- * The stack is vertical, so every gesture reads off the Y axis: drags track
- * clientY, the wheel prefers deltaY, and the up/down arrows step by one.
  */
 
 export interface SlotElements {
   root: HTMLElement;
   thumb: HTMLImageElement;
   hires: HTMLImageElement;
+  /** Only visible where -webkit-box-reflect is unsupported. */
+  reflection: HTMLImageElement;
 }
 
 export interface EngineOptions {
@@ -99,9 +98,9 @@ export class CoverFlowEngine {
 
   // Drag bookkeeping.
   private pointerId: number | null = null;
-  private startY = 0;
+  private startX = 0;
   private startPosition = 0;
-  private lastY = 0;
+  private lastX = 0;
   private lastMoveAt = 0;
   private travelled = 0;
   /**
@@ -233,8 +232,8 @@ export class CoverFlowEngine {
   }
 
   private measure = (): void => {
-    const height = this.slots[0]?.root.offsetHeight;
-    if (height) this.pxPerCover = height * 0.45;
+    const width = this.slots[0]?.root.offsetWidth;
+    if (width) this.pxPerCover = width * 0.45;
   };
 
   private applyAlbum(slot: SlotState, albumIndex: number): void {
@@ -246,6 +245,7 @@ export class CoverFlowEngine {
 
     if (!album) {
       slot.thumb.removeAttribute("src");
+      slot.reflection.removeAttribute("src");
       return;
     }
 
@@ -254,11 +254,13 @@ export class CoverFlowEngine {
     if (album.thumb) {
       slot.thumb.src = album.thumb;
       slot.thumb.alt = `${album.title} by ${album.artist}`;
+      slot.reflection.src = album.thumb;
     } else {
       // Discogs has no art for this release; leave the image empty so the
       // titled tile behind it shows through.
       slot.thumb.removeAttribute("src");
       slot.thumb.alt = "";
+      slot.reflection.removeAttribute("src");
     }
 
     const placeholder = slot.root.firstElementChild;
@@ -308,8 +310,8 @@ export class CoverFlowEngine {
         slot,
         "lastTransform",
         "transform",
-        `translate3d(0, ${(geometry.y * 100).toFixed(3)}%, ${geometry.z.toFixed(2)}px)` +
-          ` rotateX(${geometry.rotate.toFixed(2)}deg) scale(${geometry.scale.toFixed(4)})`,
+        `translate3d(${(geometry.x * 100).toFixed(3)}%, 0, ${geometry.z.toFixed(2)}px)` +
+          ` rotateY(${geometry.rotate.toFixed(2)}deg) scale(${geometry.scale.toFixed(4)})`,
       );
       this.write(slot, "lastOpacity", "opacity", geometry.opacity.toFixed(3));
       this.write(slot, "lastZIndex", "zIndex", String(geometry.zIndex));
@@ -462,7 +464,7 @@ export class CoverFlowEngine {
 
     this.dragging = true;
     this.velocity = 0;
-    this.startY = this.lastY = event.clientY;
+    this.startX = this.lastX = event.clientX;
     this.startPosition = this.position;
     this.lastMoveAt = performance.now();
     this.travelled = 0;
@@ -475,19 +477,18 @@ export class CoverFlowEngine {
 
     const now = performance.now();
     const dt = Math.max((now - this.lastMoveAt) / 1000, 0.001);
-    const dy = event.clientY - this.lastY;
+    const dx = event.clientX - this.lastX;
 
-    this.travelled += Math.abs(dy);
-    // Dragging upwards pulls the crate towards you, advancing through it.
+    this.travelled += Math.abs(dx);
     this.position =
-      this.startPosition - (event.clientY - this.startY) / this.pxPerCover;
+      this.startPosition - (event.clientX - this.startX) / this.pxPerCover;
     this.velocity = clamp(
-      -dy / this.pxPerCover / dt,
+      -dx / this.pxPerCover / dt,
       -MAX_VELOCITY,
       MAX_VELOCITY,
     );
 
-    this.lastY = event.clientY;
+    this.lastX = event.clientX;
     this.lastMoveAt = now;
     this.start();
   };
@@ -518,17 +519,17 @@ export class CoverFlowEngine {
     this.start();
   };
 
-  // deltaY is the natural axis for a vertical crate, but a trackpad swipe read
-  // as horizontal still counts rather than doing nothing at all.
+  // Trackpads send deltaX; a plain mouse wheel only sends deltaY, so both move
+  // the carousel.
   private onWheel = (event: WheelEvent): void => {
     if (!this.count) return;
     event.preventDefault();
     this.cancelAnimation();
 
     const delta =
-      Math.abs(event.deltaY) >= Math.abs(event.deltaX)
-        ? event.deltaY
-        : event.deltaX;
+      Math.abs(event.deltaX) > Math.abs(event.deltaY)
+        ? event.deltaX
+        : event.deltaY;
 
     this.position += delta / (this.pxPerCover * 1.6);
     this.velocity = 0;
@@ -544,13 +545,9 @@ export class CoverFlowEngine {
     if (!count) return;
 
     switch (event.key) {
-      // Up and down drive the stack; left and right are kept as synonyms so
-      // muscle memory from the horizontal carousel still lands somewhere sane.
-      case "ArrowUp":
       case "ArrowLeft":
         event.preventDefault();
         return this.step(-1);
-      case "ArrowDown":
       case "ArrowRight":
         event.preventDefault();
         return this.step(1);

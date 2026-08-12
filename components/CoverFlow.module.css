@@ -6,15 +6,11 @@
 }
 
 .stage {
-  /* Height is the binding dimension for a vertical stack, but the cover still
-     has to fit across a narrow phone, so width caps it too. */
-  --cover: clamp(120px, min(32vh, 64vw), 320px);
+  --cover: clamp(150px, 32vh, 330px);
   position: relative;
   flex: 1;
   min-height: 0;
-  /* The stage owns vertical drags now, so the browser must not treat them as
-     scrolls. Pinch-zoom is left alone rather than blanket `none`. */
-  touch-action: pinch-zoom;
+  touch-action: pan-y;
   cursor: grab;
   user-select: none;
   overflow: hidden;
@@ -33,13 +29,13 @@
  * Perspective lives here, on the covers' direct parent, and the track is
  * deliberately NOT `preserve-3d`.
  *
- * In a shared 3D context the browser depth-sorts every cover geometrically on
- * every frame. The tipped-back covers share one rotation, so they stay
- * parallel and never intersect — but covers within one step of the centre are
- * rotating through intermediate angles, which makes them non-parallel with
- * their neighbours and lets them genuinely intersect as solids. That produced
- * covers visibly poking through each other while scrolling, and made Safari
- * sort and split intersecting planes on every frame.
+ * In a shared 3D context the browser depth-sorts all 23 covers geometrically
+ * every frame. The side covers share one rotation, so they stay parallel and
+ * never intersect — but covers within one step of the centre are rotating
+ * through intermediate angles, which makes them non-parallel with their
+ * neighbours and lets them genuinely intersect as solids. That produced covers
+ * visibly poking through each other while scrolling, and made Safari sort and
+ * split intersecting planes on every frame.
  *
  * Each slot is instead projected against this perspective individually and
  * flattened, so paint order is plain z-index — which `geometryFor` already
@@ -50,7 +46,8 @@
   position: absolute;
   inset: 0;
   perspective: 1100px;
-  perspective-origin: 50% 50%;
+  /* Match the covers' optical centre, which sits above the midline. */
+  perspective-origin: 50% calc(50% - 0.22 * var(--cover));
 }
 
 .slot {
@@ -59,10 +56,17 @@
   left: 50%;
   width: var(--cover);
   height: var(--cover);
-  /* The stack is symmetric about the midline, so the covers simply centre. */
-  margin-top: calc(var(--cover) / -2);
+  /*
+   * Lifted well above the midpoint so the cover *and* its reflection sit
+   * centred in the stage. The visible part of a reflection is roughly 0.38 of
+   * the cover, so 0.72 above the midline balances against 0.66 below it.
+   */
+  margin-top: calc(var(--cover) * -0.72);
   margin-left: calc(var(--cover) / -2);
   will-change: transform;
+  /* Only Chrome/Safari/Edge; Firefox gets the fallback below. */
+  -webkit-box-reflect: below 3px
+    linear-gradient(transparent 62%, rgba(0, 0, 0, 0.28));
 }
 
 .art {
@@ -72,13 +76,12 @@
   height: 100%;
   object-fit: cover;
   border-radius: 2px;
-  /* Still kept fairly tight — a wide blur radius is rasterised per slot, and
-     it's one of the more expensive things next to an animating stack. The
-     covers overlap heavily here, so the shadow's job is separating each sleeve
-     from the one behind it, which needs very little reach. */
+  /* Kept tight on purpose. A wide blur radius here is rasterised once for the
+     cover and again for its reflection, across every slot — the single most
+     expensive thing in the carousel, for a shadow that heavy overlap hides. */
   box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.65),
-    0 10px 22px rgba(0, 0, 0, 0.5);
+    0 1px 2px rgba(0, 0, 0, 0.6),
+    0 8px 18px rgba(0, 0, 0, 0.5);
   background: #17171b;
   pointer-events: none;
 }
@@ -136,6 +139,34 @@
   font-size: 0.72rem;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.06em;
+}
+
+/*
+ * Firefox has no -webkit-box-reflect, so it gets a real mirrored <img> that JS
+ * keeps pointed at the same artwork. Everywhere else that element stays hidden
+ * and the native reflection does the work.
+ */
+.reflection {
+  display: none;
+}
+
+@supports not (-webkit-box-reflect: below 0 linear-gradient(#000, #000)) {
+  .reflection {
+    display: block;
+    position: absolute;
+    top: calc(100% + 3px);
+    left: 0;
+    inset-block-end: auto;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleY(-1);
+    opacity: 0.25;
+    box-shadow: none;
+    -webkit-mask-image: linear-gradient(transparent 62%, #000);
+    mask-image: linear-gradient(transparent 62%, #000);
+    pointer-events: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
