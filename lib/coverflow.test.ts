@@ -71,32 +71,47 @@ describe("geometryFor", () => {
     expect(geometryFor(-2).y).toBeLessThan(0);
   });
 
-  it("mirrors the two halves of the stack", () => {
+  it("spreads the stack symmetrically but does not mirror it", () => {
     const above = geometryFor(-3);
     const below = geometryFor(3);
     expect(above.y).toBeCloseTo(-below.y);
-    expect(above.rotate).toBeCloseTo(-below.rotate);
     expect(above.z).toBeCloseTo(below.z);
+    // Mirroring the lean is what made the lower half read as a reflection of
+    // the upper one, so both halves lean the same way instead.
+    expect(above.rotate).toBeCloseTo(below.rotate);
   });
 
-  it("tips each cover's inner edge towards the viewer", () => {
-    // rotateX is positive towards the bottom of the screen, so a cover below
-    // the centre needs a negative angle to bring its top edge forward.
-    expect(geometryFor(1).rotate).toBeLessThan(0);
+  it("leans every off-centre cover back, above and below alike", () => {
+    // A positive rotateX swings the top edge away from the viewer — how a
+    // record leans in a crate.
+    expect(geometryFor(1).rotate).toBeGreaterThan(0);
     expect(geometryFor(-1).rotate).toBeGreaterThan(0);
   });
 
-  it("tips covers to a fixed angle once clear of the centre", () => {
+  it("leans gently, so a cover crossing the centre doesn't read as spinning", () => {
     expect(geometryFor(1).rotate).toBe(geometryFor(6).rotate);
-    expect(Math.abs(geometryFor(1).rotate)).toBeGreaterThan(45);
+    // The whole sweep a cover turns through as it passes the centre.
+    const sweep = geometryFor(-1).rotate + geometryFor(1).rotate;
+    expect(sweep).toBeLessThan(45);
+  });
+
+  it("pulls the centred cover forward and pushes the rest back", () => {
+    // Depth carries the motion: this is what makes it read as flipping through
+    // a crate rather than as a fan opening and closing.
+    expect(geometryFor(0).z).toBeCloseTo(0);
+    expect(geometryFor(1).z).toBeLessThan(-100);
+    expect(geometryFor(2).z).toBeLessThan(geometryFor(1).z);
+    expect(geometryFor(-2).z).toBeLessThan(geometryFor(-1).z);
   });
 
   it("interpolates rather than snapping between states", () => {
     const half = geometryFor(0.5);
-    expect(Math.abs(half.rotate)).toBeGreaterThan(0);
-    expect(Math.abs(half.rotate)).toBeLessThan(Math.abs(geometryFor(1).rotate));
+    expect(half.rotate).toBeGreaterThan(0);
+    expect(half.rotate).toBeLessThan(geometryFor(1).rotate);
     expect(half.y).toBeGreaterThan(0);
     expect(half.y).toBeLessThan(geometryFor(1).y);
+    expect(half.z).toBeLessThan(0);
+    expect(half.z).toBeGreaterThan(geometryFor(1).z);
   });
 
   it("moves covers monotonically down the stack", () => {

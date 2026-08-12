@@ -8,7 +8,7 @@
 .stage {
   /* Height is the binding dimension for a vertical stack, but the cover still
      has to fit across a narrow phone, so width caps it too. */
-  --cover: clamp(118px, min(28vh, 62vw), 300px);
+  --cover: clamp(120px, min(32vh, 64vw), 320px);
   position: relative;
   flex: 1;
   min-height: 0;
