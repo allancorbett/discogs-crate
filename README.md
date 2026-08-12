@@ -13,19 +13,55 @@ Next.js (App Router) + TypeScript, deployable to Vercel as-is.
 npm install && npm run dev
 ```
 
-Then open http://localhost:3000 and paste a Discogs **personal access token**
-(Discogs → [Settings → Developers](https://www.discogs.com/settings/developers)
-→ *Generate token*).
+Then open http://localhost:3000. There are up to three ways in, depending on
+what the deployment is configured with:
 
-The token is verified against Discogs before it is stored, and kept in an
-httpOnly cookie that client-side JavaScript cannot read.
+- **Sign in with Discogs** — the OAuth flow, when consumer credentials are set.
+- **A personal access token** — pasted from Discogs →
+  [Settings → Developers](https://www.discogs.com/settings/developers) →
+  *Generate token*. Always available, and the only option out of the box.
+- **The demo** — browse a sample collection without signing in, when a demo
+  token is set.
+
+Credentials are verified against Discogs before being stored, and live in
+httpOnly cookies that client-side JavaScript cannot read.
 
 ### Environment
 
-| Variable             | Required | Purpose                                                                                                                                                   |
-| -------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DISCOGS_USER_AGENT` | No       | Sent on every Discogs request. Defaults to a generic string; set it to something identifying your deployment, e.g. `Crate/1.0 +https://crate.example.com`. |
-| `DISCOGS_DEMO_TOKEN` | No       | Enables the demo (see below). Leave unset and the demo button never appears.                                                                              |
+| Variable                  | Required | Purpose                                                                                                                                                   |
+| ------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DISCOGS_USER_AGENT`      | No       | Sent on every Discogs request. Defaults to a generic string; set it to something identifying your deployment, e.g. `Crate/1.0 +https://crate.example.com`. |
+| `DISCOGS_CONSUMER_KEY`    | No       | Enables "Sign in with Discogs" (see below). Both this and the secret must be set.                                                                          |
+| `DISCOGS_CONSUMER_SECRET` | No       | The other half of the OAuth credentials.                                                                                                                  |
+| `DISCOGS_APP_URL`         | No       | Overrides the origin used to build the OAuth callback URL. Normally unnecessary — it's derived from the request.                                           |
+| `DISCOGS_DEMO_TOKEN`      | No       | Enables the demo (see below). Leave unset and the demo button never appears.                                                                               |
+
+### Sign in with Discogs (OAuth)
+
+Create an application at [Discogs → Settings →
+Developers](https://www.discogs.com/settings/developers), then set
+`DISCOGS_CONSUMER_KEY` and `DISCOGS_CONSUMER_SECRET`. A **Sign in with Discogs**
+button appears on the gate and the token field becomes a fallback. With neither
+set, the token field is the only way in — nothing else changes.
+
+Discogs supports **OAuth 1.0a only**; there is no OAuth 2 flow. Two consequences
+shaped the implementation:
+
+- **Signatures are per-request.** A 1.0a signature covers the HTTP method and
+  full URL, so `AuthStrategy.authHeader(method, url)` takes both rather than
+  handing back a cached header. `OAuth1Strategy` signs each call as it goes out.
+- **HMAC-SHA1, not PLAINTEXT.** Discogs accepts PLAINTEXT, where the signature
+  is just the two secrets concatenated. Both travel over TLS, but PLAINTEXT puts
+  the consumer secret in an `Authorization` header on *every* API call, and
+  request headers routinely end up in proxy logs, error trackers and platform
+  request logs. HMAC keeps the secrets local.
+
+The callback URL is derived from the incoming request, so localhost and Vercel
+preview deployments work with no extra configuration; Discogs does not require
+it to be registered in advance. While the user is away approving the app, the
+request token secret sits in a 15-minute `httpOnly` cookie, and the token that
+comes back must match the one this browser started with — otherwise someone
+else's approval could be replayed into the session.
 
 ### Demo mode
 
@@ -56,14 +92,16 @@ browser calls would work — but proxying buys four things:
 - Discogs **requires** a descriptive `User-Agent`, and browsers forbid scripts
   from setting that header. A request without one is rejected outright.
 - Rate-limit handling and retries live in one place.
-- Swapping token auth for OAuth later touches only server code.
+- Adding OAuth touched only server code — no client changes at all.
 
 ```
-app/api/auth/{token,session,logout}   sign in, check session, sign out
-app/api/collection                    one normalized page of the collection
-app/api/release/[id]                  tracklist and extended metadata
+app/api/auth/{token,demo,session,logout}   sign in, check session, sign out
+app/api/auth/oauth/{start,callback}        the OAuth 1.0a redirect flow
+app/api/collection                         one normalized page of the collection
+app/api/release/[id]                       tracklist and extended metadata
 
-lib/discogs/auth.ts        AuthStrategy seam (see below)
+lib/discogs/auth.ts        AuthStrategy seam (see below) and session cookies
+lib/discogs/oauth.ts       OAuth 1.0a signing and the three-legged flow
 lib/discogs/client.ts      fetch wrapper: User-Agent, credential, 429 backoff
 lib/discogs/collection.ts  paging and normalization to `Album`
 lib/coverflow.ts           crate geometry and index maths (pure)
@@ -72,12 +110,9 @@ lib/ordering.ts            artist / year / genre / shuffle ordering (pure)
 lib/picker.ts              genre filtering and random choice (pure)
 ```
 
-### Adding OAuth later
+### The auth seam
 
-Discogs supports personal access tokens and OAuth **1.0a** — there is no OAuth 2
-flow. A 1.0a signature is computed over the HTTP method and full URL of each
-request, so the credential cannot be a fixed header string. `AuthStrategy`
-accounts for that:
+Three ways of authenticating meet behind one interface:
 
 ```ts
 interface AuthStrategy {
@@ -85,10 +120,15 @@ interface AuthStrategy {
 }
 ```
 
-`PersonalTokenStrategy` ignores both arguments. Adding a real "Log in with
-Discogs" button means writing an `OAuth1Strategy` that signs per request, plus
-`/api/auth/oauth/start` and `/api/auth/oauth/callback` route handlers. Nothing
-else changes — `client.ts` and every route handler already go through the seam.
+`PersonalTokenStrategy` ignores both arguments and returns a static header.
+`OAuth1Strategy` needs both, because a 1.0a signature is computed over the
+request's method and full URL. `client.ts` and every route handler only ever
+call this method, so all three paths — OAuth, pasted token, demo — are
+interchangeable from there down.
+
+`getAuthStrategy()` is the single place they are resolved, in order: a real
+sign-in (OAuth, then a pasted token) always beats a lingering demo cookie, so
+signing in properly does what you'd expect without leaving the demo first.
 
 ### The crate
 
@@ -135,6 +175,11 @@ planning, ordering and shuffling, genre filtering and picking, and collection
 normalization — including Discogs quirks like the `(2)` disambiguator in
 "Nirvana (2)" and `year: 0` meaning "unknown".
 
+The OAuth signer is tested too: RFC 3986 percent-encoding, signature base string
+construction (parameter sorting, repeated keys, query strings excluded from the
+base URL), and HMAC-SHA1 against the RFC 2202 test vector — so the crypto is
+checked against an external reference rather than only itself.
+
 ```bash
 npm run lint
 npm run typecheck
@@ -142,5 +187,7 @@ npm run typecheck
 
 ## Deploying
 
-Push to a repository and import it on Vercel — no configuration needed beyond
-setting `DISCOGS_USER_AGENT`. Each visitor signs in with their own token.
+Push to a repository and import it on Vercel. Nothing is required beyond
+`DISCOGS_USER_AGENT`; add the OAuth and demo variables above to enable those
+routes. Each visitor signs in as themselves — the app holds no shared user
+state.

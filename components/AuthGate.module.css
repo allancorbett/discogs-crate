@@ -28,12 +28,15 @@
 }
 
 .blurb {
-  margin: 0 0 32px;
+  /* Paired with .form's margin-top so spacing below the blurb is the same
+     whether or not the OAuth button sits between them. */
+  margin: 0 0 14px;
   color: var(--text-dim);
   text-wrap: pretty;
 }
 
 .form {
+  margin-top: 18px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -69,6 +72,8 @@
 }
 
 .submit {
+  display: block;
+  width: 100%;
   margin-top: 8px;
   padding: 12px 18px;
   border: none;
@@ -76,6 +81,8 @@
   background: var(--accent);
   color: var(--accent-ink);
   font-weight: 600;
+  text-align: center;
+  text-decoration: none;
   transition: filter 0.15s ease;
 }
 
@@ -83,9 +90,53 @@
   filter: brightness(1.08);
 }
 
-.submit:disabled {
+.submit:disabled,
+.submit[aria-disabled="true"] {
   opacity: 0.6;
   cursor: default;
+}
+
+/* The token form, when OAuth is the headline action. */
+.secondary {
+  margin-top: 8px;
+  padding: 11px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-dim);
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--surface-strong);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.secondary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.textLink {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  font-size: 0.84rem;
+  text-align: center;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.textLink:hover {
+  color: var(--text);
 }
 
 .demo {
