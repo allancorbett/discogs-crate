@@ -27,7 +27,8 @@ function listenLinks(album: Album) {
     },
     {
       label: "Qobuz",
-      href: `https://www.qobuz.com/search?q=${encodeURIComponent(query)}`,
+      // Qobuz store routes are locale-prefixed; a bare /search 404s.
+      href: `https://www.qobuz.com/gb-en/search?q=${encodeURIComponent(query)}`,
     },
     {
       label: "YouTube",
