@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { SORT_MODES, type SortMode } from "@/lib/ordering";
 import { facetsOf } from "@/lib/picker";
 import type { Album } from "@/lib/discogs/types";
@@ -22,7 +22,11 @@ interface Props {
   onPick: () => void;
 }
 
-export function PickerBar({
+/**
+ * Memoized alongside the carousel: a progress count ticking up mid-import is
+ * no reason to re-render three dozen filter chips.
+ */
+export const PickerBar = memo(function PickerBar({
   albums,
   selected,
   sort,
@@ -148,4 +152,4 @@ export function PickerBar({
       ) : null}
     </div>
   );
-}
+});

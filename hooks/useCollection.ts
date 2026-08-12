@@ -6,6 +6,12 @@ import type { Album, CollectionPage } from "@/lib/discogs/types";
 
 export interface UseCollection {
   albums: Album[];
+  /**
+   * Records fetched so far. Runs a little ahead of `albums.length` while pages
+   * are still arriving, because arrivals are published in batches — see
+   * PUBLISH_INTERVAL_MS — while the progress count keeps moving with every one.
+   */
+  loaded: number;
   /** Total the API reports, so progress can be shown before everything lands. */
   total: number | null;
   /** True while pages are still arriving; covers already render regardless. */
@@ -20,6 +26,7 @@ interface State {
   /** Which (user, reload) attempt this result belongs to. */
   token: string;
   albums: Album[];
+  loaded: number;
   total: number | null;
   /** All pages have arrived, or the attempt failed. */
   done: boolean;
@@ -30,11 +37,27 @@ interface State {
 const EMPTY: State = {
   token: "",
   albums: [],
+  loaded: 0,
   total: null,
   done: false,
   error: null,
   unauthorized: false,
 };
+
+/**
+ * How long the collection may go unpublished while pages are still arriving.
+ *
+ * Everything downstream is derived from the whole array — the tag filter, the
+ * filing order, the facet counts, every slot's album in the carousel — so each
+ * new array costs a pass over the entire collection. Publishing all fifty
+ * pages of a five thousand record crate separately spends most of the import
+ * redoing work that the next page invalidates a moment later, and it is the
+ * user's scrolling and dragging that pays for it.
+ *
+ * Page one still publishes the moment it lands, so covers appear just as fast;
+ * the rest arrives in a handful of batches rather than one jolt per page.
+ */
+const PUBLISH_INTERVAL_MS = 400;
 
 class UnauthorizedError extends Error {}
 
@@ -100,6 +123,7 @@ export function useCollection(username: string | undefined): UseCollection {
         update(() => ({
           token,
           albums: cached,
+          loaded: cached.length,
           total: cached.length,
           done: true,
           error: null,
@@ -109,14 +133,23 @@ export function useCollection(username: string | undefined): UseCollection {
       }
 
       const collected: Album[] = [];
+      // The most recent snapshot handed to the UI. Held between arrivals so a
+      // batched-over page republishes the same array, and the memoized work
+      // downstream stays memoized.
+      let published: Album[] = [];
+      let publishedAt = 0;
+
       try {
         const first = await fetchPage(1, controller.signal);
         if (cancelled) return;
 
         collected.push(...first.albums);
+        published = [...collected];
+        publishedAt = Date.now();
         update(() => ({
           token,
-          albums: [...collected],
+          albums: published,
+          loaded: collected.length,
           total: first.totalItems,
           done: first.pages <= 1,
           error: null,
@@ -128,11 +161,21 @@ export function useCollection(username: string | undefined): UseCollection {
           if (cancelled) return;
 
           collected.push(...next.albums);
+
+          // The last page always publishes, however soon after the one before
+          // it — nothing is coming along later to carry it in.
+          const last = page === first.pages;
+          if (last || Date.now() - publishedAt >= PUBLISH_INTERVAL_MS) {
+            published = [...collected];
+            publishedAt = Date.now();
+          }
+
           update((previous) => ({
             ...previous,
             token,
-            albums: [...collected],
-            done: page === first.pages,
+            albums: published,
+            loaded: collected.length,
+            done: last,
           }));
         }
 
@@ -165,6 +208,7 @@ export function useCollection(username: string | undefined): UseCollection {
 
   return {
     albums: current ? state.albums : [],
+    loaded: current ? state.loaded : 0,
     total: current ? state.total : null,
     loading: Boolean(username) && (!current || !state.done),
     error: current ? state.error : null,

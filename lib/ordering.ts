@@ -56,21 +56,66 @@ function compareOptional(a: string | null, b: string | null): number {
   return collator.compare(a, b);
 }
 
-const byArtist = (a: Album, b: Album): number =>
-  collator.compare(artistKey(a.artist), artistKey(b.artist)) ||
-  yearKey(a) - yearKey(b) ||
-  collator.compare(a.title, b.title);
+interface SortKeys {
+  artist: string;
+  year: number;
+  genre: string | null;
+}
 
-const byYear = (a: Album, b: Album): number =>
-  yearKey(a) - yearKey(b) ||
-  collator.compare(artistKey(a.artist), artistKey(b.artist)) ||
-  collator.compare(a.title, b.title);
+/**
+ * Derived keys, computed once per record and cached against the record itself.
+ *
+ * The collection arrives a page at a time and the whole crate is re-filed on
+ * every arrival, so a comparator that derives its keys inline runs `artistKey`
+ * — two regexes and a trim — twice per comparison, tens of thousands of times
+ * per page. Records are immutable once normalized, so the keys can simply be
+ * remembered; a WeakMap means a collection that gets replaced is collectable.
+ */
+const sortKeys = new WeakMap<Album, SortKeys>();
 
-const byGenre = (a: Album, b: Album): number =>
-  compareOptional(genreKey(a), genreKey(b)) ||
-  collator.compare(artistKey(a.artist), artistKey(b.artist)) ||
-  yearKey(a) - yearKey(b) ||
-  collator.compare(a.title, b.title);
+function keysOf(album: Album): SortKeys {
+  let keys = sortKeys.get(album);
+  if (!keys) {
+    keys = {
+      artist: artistKey(album.artist),
+      year: yearKey(album),
+      genre: genreKey(album),
+    };
+    sortKeys.set(album, keys);
+  }
+  return keys;
+}
+
+const byArtist = (a: Album, b: Album): number => {
+  const x = keysOf(a);
+  const y = keysOf(b);
+  return (
+    collator.compare(x.artist, y.artist) ||
+    x.year - y.year ||
+    collator.compare(a.title, b.title)
+  );
+};
+
+const byYear = (a: Album, b: Album): number => {
+  const x = keysOf(a);
+  const y = keysOf(b);
+  return (
+    x.year - y.year ||
+    collator.compare(x.artist, y.artist) ||
+    collator.compare(a.title, b.title)
+  );
+};
+
+const byGenre = (a: Album, b: Album): number => {
+  const x = keysOf(a);
+  const y = keysOf(b);
+  return (
+    compareOptional(x.genre, y.genre) ||
+    collator.compare(x.artist, y.artist) ||
+    x.year - y.year ||
+    collator.compare(a.title, b.title)
+  );
+};
 
 /** MurmurHash3's finaliser: cheap, and avalanches well enough to look random. */
 function mix(value: number): number {

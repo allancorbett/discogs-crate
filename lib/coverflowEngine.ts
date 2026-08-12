@@ -43,6 +43,8 @@ export interface EngineOptions {
 
 interface SlotState extends SlotElements {
   albumIndex: number;
+  /** Which record's artwork is actually loaded, independent of its position. */
+  albumId: number | null;
   hiresRequested: boolean;
   /**
    * Last values written to the DOM. Assigning an identical string to
@@ -95,6 +97,8 @@ export class CoverFlowEngine {
   private pxPerCover = 160;
   private reducedMotion = false;
   private destroyed = false;
+  /** Set by refresh(): every slot's album assignment needs re-deriving. */
+  private stale = false;
 
   // Drag bookkeeping.
   private pointerId: number | null = null;
@@ -118,6 +122,7 @@ export class CoverFlowEngine {
     this.slots = options.slots.map((slot) => ({
       ...slot,
       albumIndex: -1,
+      albumId: null,
       hiresRequested: false,
       lastTransform: "",
       lastOpacity: "",
@@ -171,10 +176,16 @@ export class CoverFlowEngine {
 
   /**
    * The collection changed — usually another page arriving. Wrapping depends
-   * on the total, so every slot's album assignment is now stale.
+   * on the total, so every slot's album assignment has to be re-derived.
+   *
+   * Only the assignment, though: appending a page leaves most slots showing
+   * the very record they were already showing, and reloading their artwork
+   * anyway makes the whole carousel blink on every arrival. `applyAlbum`
+   * compares the record before touching an image, so an unchanged slot costs
+   * nothing here.
    */
   refresh(): void {
-    for (const slot of this.slots) slot.albumIndex = -1;
+    this.stale = true;
     this.centre = -1;
     this.measure();
     this.paint();
@@ -238,7 +249,17 @@ export class CoverFlowEngine {
 
   private applyAlbum(slot: SlotState, albumIndex: number): void {
     const album = this.options.getAlbums()[albumIndex];
+    const albumId = album?.id ?? null;
+    const sameRecord = albumId !== null && albumId === slot.albumId;
+
     slot.albumIndex = albumIndex;
+    if (album) slot.root.dataset.index = String(albumIndex);
+
+    // The slot moved but the record on it didn't: the artwork it already
+    // holds, high-res upgrade included, is still the right artwork.
+    if (sameRecord) return;
+
+    slot.albumId = albumId;
     slot.hiresRequested = false;
     slot.hires.style.opacity = "0";
     slot.hires.removeAttribute("src");
@@ -248,8 +269,6 @@ export class CoverFlowEngine {
       slot.reflection.removeAttribute("src");
       return;
     }
-
-    slot.root.dataset.index = String(albumIndex);
 
     if (album.thumb) {
       slot.thumb.src = album.thumb;
@@ -295,6 +314,9 @@ export class CoverFlowEngine {
 
       if (index >= activeSlots) {
         this.write(slot, "lastDisplay", "display", "none");
+        // A hidden slot is skipped below, so it can't be revalidated with the
+        // rest; make sure it re-derives when the collection grows into it.
+        slot.albumIndex = -1;
         continue;
       }
       this.write(slot, "lastDisplay", "display", "");
@@ -303,7 +325,9 @@ export class CoverFlowEngine {
       const distance = slotPos - this.position;
       const albumIndex = wrapIndex(slotPos, count);
 
-      if (slot.albumIndex !== albumIndex) this.applyAlbum(slot, albumIndex);
+      if (slot.albumIndex !== albumIndex || this.stale) {
+        this.applyAlbum(slot, albumIndex);
+      }
 
       const geometry = geometryFor(distance);
       this.write(
@@ -331,6 +355,8 @@ export class CoverFlowEngine {
         slot.hires.src = album.coverImage;
       }
     }
+
+    this.stale = false;
 
     const centre = wrapIndex(Math.round(this.position), count);
     if (centre !== this.centre) {
