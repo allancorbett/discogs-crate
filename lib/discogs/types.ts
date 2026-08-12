@@ -189,4 +189,6 @@ export interface SessionInfo {
   demo?: boolean;
   /** Whether a demo is offered at all, so the sign-in gate knows to show it. */
   demoAvailable?: boolean;
+  /** Whether "Sign in with Discogs" is configured on this deployment. */
+  oauthAvailable?: boolean;
 }
