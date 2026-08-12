@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useImperativeHandle, useRef } from "react";
+import { memo, useEffect, useImperativeHandle, useRef } from "react";
 import { SLOT_COUNT } from "@/lib/coverflow";
 import { CoverFlowEngine, type SlotElements } from "@/lib/coverflowEngine";
 import type { Album } from "@/lib/discogs/types";
@@ -26,8 +26,17 @@ interface Props {
 /**
  * Markup and caption for the carousel. All motion lives in CoverFlowEngine —
  * see the note there on why this component stays out of the animation path.
+ *
+ * Memoized: while a collection is importing, the crate re-renders on every
+ * page to move the progress count, and the carousel has nothing to say about
+ * that until the albums themselves change.
  */
-export function CoverFlow({ albums, onCentreChange, onSelect, ref }: Props) {
+export const CoverFlow = memo(function CoverFlow({
+  albums,
+  onCentreChange,
+  onSelect,
+  ref,
+}: Props) {
   const stageRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLDivElement>(null);
   const artistRef = useRef<HTMLDivElement>(null);
@@ -172,4 +181,4 @@ export function CoverFlow({ albums, onCentreChange, onSelect, ref }: Props) {
       </div>
     </div>
   );
-}
+});

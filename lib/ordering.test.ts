@@ -135,6 +135,24 @@ describe("orderAlbums", () => {
     ]);
   });
 
+  it("files the same records the same way however often it is asked", () => {
+    // Sort keys are derived once per record and cached against it, because the
+    // whole crate is re-filed every time a page of the collection lands. A
+    // cache that leaked between modes, or went stale, would show up here.
+    const albums = [
+      album({ artist: "The Beatles", title: "Revolver", genres: ["Rock"] }),
+      album({ artist: "Alice Coltrane", title: "Journey", genres: ["Jazz"] }),
+      album({ artist: "Curtis Mayfield", title: "Curtis", genres: ["Funk"] }),
+    ];
+
+    const byArtist = titles(orderAlbums(albums, "artist"));
+    const byGenre = titles(orderAlbums(albums, "genre"));
+
+    expect(titles(orderAlbums(albums, "artist"))).toEqual(byArtist);
+    expect(titles(orderAlbums(albums, "genre"))).toEqual(byGenre);
+    expect(byGenre).toEqual(["Curtis", "Journey", "Revolver"]);
+  });
+
   it("keeps the same records, whatever the mode", () => {
     const albums = Array.from({ length: 30 }, (_, index) =>
       album({ title: `Record ${index}`, year: 1960 + (index % 12) }),

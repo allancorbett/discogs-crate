@@ -23,7 +23,7 @@ interface OpenPanel {
 }
 
 export function Crate({ username, demo = false, onSignOut }: Props) {
-  const { albums, total, loading, error, unauthorized, refresh } =
+  const { albums, loaded, total, loading, error, unauthorized, refresh } =
     useCollection(username);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -54,15 +54,22 @@ export function Crate({ username, demo = false, onSignOut }: Props) {
   /**
    * The crate shows exactly what the filters select, nothing more, filed in
    * whichever order is on.
+   *
+   * Selecting and filing are memoized apart so that changing one doesn't pay
+   * for the other: re-filing an already-filtered crate is the common case, and
+   * an unfiltered crate needs no pass at all.
    */
-  const visible = useMemo(
+  const matching = useMemo(
     () =>
-      orderAlbums(
-        albums.filter((album) => matches(album, selected)),
-        sort,
-        shuffleSeed,
-      ),
-    [albums, selected, sort, shuffleSeed],
+      selected.size === 0
+        ? albums
+        : albums.filter((album) => matches(album, selected)),
+    [albums, selected],
+  );
+
+  const visible = useMemo(
+    () => orderAlbums(matching, sort, shuffleSeed),
+    [matching, sort, shuffleSeed],
   );
 
   const visibleRef = useRef(visible);
@@ -156,7 +163,6 @@ export function Crate({ username, demo = false, onSignOut }: Props) {
     coverFlow.current?.focus();
   }, []);
 
-  const loaded = albums.length;
   const filtered = selected.size > 0;
   const panelAlbum = panel ? visible[panel.index] : undefined;
 
@@ -205,7 +211,7 @@ export function Crate({ username, demo = false, onSignOut }: Props) {
         </p>
       ) : null}
 
-      {loaded === 0 ? (
+      {albums.length === 0 ? (
         <div className={styles.empty}>
           {loading ? (
             <p>Fetching your collection from Discogs…</p>
