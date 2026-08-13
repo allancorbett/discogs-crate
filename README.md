@@ -1,8 +1,7 @@
 # Crate
 
 Browse your Discogs collection as a CoverFlow-style carousel — filed by artist,
-year or genre, or shuffled — and let it pick a record for you, at random or
-narrowed to the genres and styles you're in the mood for.
+year or genre, or shuffled.
 
 Next.js (App Router) + TypeScript, deployable to Vercel as-is.
 
@@ -106,7 +105,6 @@ lib/discogs/collection.ts  paging and normalization to `Album`
 lib/coverflow.ts           carousel geometry and index maths (pure)
 lib/coverflowEngine.ts     the carousel's DOM/animation controller
 lib/ordering.ts            artist / year / genre / shuffle ordering (pure)
-lib/picker.ts              genre filtering and random choice (pure)
 ```
 
 ### The auth seam
@@ -167,8 +165,7 @@ npm test
 ```
 
 Covers the pure layers: carousel geometry and wrapping, slot recycling, spin
-planning, ordering and shuffling, genre filtering and picking, and collection
-normalization — including Discogs quirks like the `(2)` disambiguator in
+planning, ordering and shuffling, and collection normalization — including Discogs quirks like the `(2)` disambiguator in
 "Nirvana (2)" and `year: 0` meaning "unknown".
 
 The OAuth signer is tested too: RFC 3986 percent-encoding, signature base string

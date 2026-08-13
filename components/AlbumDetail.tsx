@@ -7,9 +7,6 @@ import styles from "./AlbumDetail.module.css";
 
 interface Props {
   album: Album;
-  /** Shown only when the panel was opened by a pick, not by browsing. */
-  onReroll?: () => void;
-  rerolling?: boolean;
   onClose: () => void;
 }
 
@@ -37,7 +34,7 @@ function listenLinks(album: Album) {
   ];
 }
 
-export function AlbumDetail({ album, onReroll, rerolling, onClose }: Props) {
+export function AlbumDetail({ album, onClose }: Props) {
   const { release, loading, error } = useRelease(album.id);
   const closeRef = useRef<HTMLButtonElement>(null);
 
@@ -158,17 +155,6 @@ export function AlbumDetail({ album, onReroll, rerolling, onClose }: Props) {
           ) : null}
 
           <footer className={styles.actions}>
-            {onReroll ? (
-              <button
-                type="button"
-                className={styles.primary}
-                onClick={onReroll}
-                disabled={rerolling}
-              >
-                {rerolling ? "Picking…" : "Pick another"}
-              </button>
-            ) : null}
-
             <a
               className="pill"
               href={release?.discogsUrl ?? album.discogsUrl}

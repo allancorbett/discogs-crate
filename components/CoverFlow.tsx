@@ -7,8 +7,6 @@ import type { Album } from "@/lib/discogs/types";
 import styles from "./CoverFlow.module.css";
 
 export interface CoverFlowHandle {
-  /** Slot-machine spin onto an already-chosen album. Resolves once settled. */
-  spinTo(index: number): Promise<void>;
   goTo(index: number, animate?: boolean): void;
   centreIndex(): number;
   focus(): void;
@@ -113,7 +111,6 @@ export const CoverFlow = memo(function CoverFlow({
   useImperativeHandle(
     ref,
     (): CoverFlowHandle => ({
-      spinTo: async (index) => engineRef.current?.spinTo(index),
       goTo: (index, animate) => engineRef.current?.goTo(index, animate),
       centreIndex: () => engineRef.current?.centreIndex ?? 0,
       focus: () => stageRef.current?.focus(),
