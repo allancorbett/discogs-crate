@@ -1,0 +1,38 @@
+.bar {
+  flex: none;
+  padding: 14px 20px 20px;
+  border-top: 1px solid var(--border);
+  /* Opaque rather than a translucent backdrop-filter: the stage clips its own
+     overflow, so nothing ever shows through here, and a backdrop blur is one
+     of the more expensive things to keep alive next to an animating carousel. */
+  background: var(--bg);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Short enough to wrap rather than scroll, so no overflow fade is wanted. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.label {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 720px) {
+  /* Clear the home indicator on phones that put it inside the viewport. */
+  .bar {
+    padding: 12px 16px max(16px, env(safe-area-inset-bottom));
+  }
+}

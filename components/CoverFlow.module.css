@@ -6,7 +6,6 @@
 }
 
 .stage {
-  --cover: clamp(150px, 32vh, 330px);
   position: relative;
   flex: 1;
   min-height: 0;
@@ -14,6 +13,8 @@
   cursor: grab;
   user-select: none;
   overflow: hidden;
+  /* Covers are sized against this box rather than the viewport — see .track. */
+  container-type: size;
 }
 
 .stage:focus-visible {
@@ -43,11 +44,31 @@
  * all covers still share one vanishing point.
  */
 .track {
+  /* Fallback for engines without container query units. Viewport height is a
+     poor stand-in for the stage — the header and the order bar are not in it —
+     so it is kept conservative rather than accurate. */
+  --cover: clamp(140px, min(30vh, 62vw), 330px);
   position: absolute;
   inset: 0;
   perspective: 1100px;
   /* Match the covers' optical centre, which sits above the midline. */
   perspective-origin: 50% calc(50% - 0.22 * var(--cover));
+}
+
+/*
+ * Size the covers off the stage they sit in, so the artwork can never be
+ * clipped by the stage's own overflow no matter what the header, caption and
+ * order bar leave behind. A slot hangs 0.72 cover-heights above the stage's
+ * midline (see .slot) and the centre cover is scaled up another 14% about its
+ * own middle, putting its top edge 0.79 cover-heights up — so anything past
+ * 0.63 of the stage height loses that edge, which on a phone reads as the
+ * sleeve running up under the header. 0.6 leaves a little air above it; the
+ * width cap keeps the side covers in frame on a narrow screen.
+ */
+@supports (container-type: size) {
+  .track {
+    --cover: min(60cqh, 62cqw, 330px);
+  }
 }
 
 .slot {

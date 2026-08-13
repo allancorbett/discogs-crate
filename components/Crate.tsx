@@ -3,10 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlbumDetail } from "./AlbumDetail";
 import { CoverFlow, type CoverFlowHandle } from "./CoverFlow";
-import { PickerBar } from "./PickerBar";
+import { OrderBar } from "./OrderBar";
 import { useCollection } from "@/hooks/useCollection";
 import { orderAlbums, type SortMode } from "@/lib/ordering";
-import { matches, pickIndex, rememberPick } from "@/lib/picker";
 import styles from "./Crate.module.css";
 
 interface Props {
@@ -16,17 +15,10 @@ interface Props {
   onSignOut: () => void;
 }
 
-interface OpenPanel {
-  index: number;
-  /** Distinguishes "the app chose this" from "I clicked this cover". */
-  fromPick: boolean;
-}
-
 export function Crate({ username, demo = false, onSignOut }: Props) {
   const { albums, loaded, total, loading, error, unauthorized, refresh } =
     useCollection(username);
 
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sort, setSort] = useState<SortMode>("artist");
   /**
    * Only meaningful in shuffle mode. Seeded from a constant rather than
@@ -34,15 +26,7 @@ export function Crate({ username, demo = false, onSignOut }: Props) {
    * moment the user actually asks to shuffle.
    */
   const [shuffleSeed, setShuffleSeed] = useState(1);
-  const [panel, setPanel] = useState<OpenPanel | null>(null);
-  const [spinning, setSpinning] = useState(false);
-  /**
-   * Recent picks are tracked by release id rather than by position, because
-   * positions are into the *filtered* list and shift the moment a genre chip
-   * is toggled.
-   */
-  const [recentIds, setRecentIds] = useState<number[]>([]);
-  const [centre, setCentre] = useState(0);
+  const [panelIndex, setPanelIndex] = useState<number | null>(null);
 
   const coverFlow = useRef<CoverFlowHandle>(null);
 
@@ -51,25 +35,10 @@ export function Crate({ username, demo = false, onSignOut }: Props) {
     if (unauthorized) onSignOut();
   }, [unauthorized, onSignOut]);
 
-  /**
-   * The crate shows exactly what the filters select, nothing more, filed in
-   * whichever order is on.
-   *
-   * Selecting and filing are memoized apart so that changing one doesn't pay
-   * for the other: re-filing an already-filtered crate is the common case, and
-   * an unfiltered crate needs no pass at all.
-   */
-  const matching = useMemo(
-    () =>
-      selected.size === 0
-        ? albums
-        : albums.filter((album) => matches(album, selected)),
-    [albums, selected],
-  );
-
+  /** The whole crate, filed in whichever order is on. */
   const visible = useMemo(
-    () => orderAlbums(matching, sort, shuffleSeed),
-    [matching, sort, shuffleSeed],
+    () => orderAlbums(albums, sort, shuffleSeed),
+    [albums, sort, shuffleSeed],
   );
 
   const visibleRef = useRef(visible);
@@ -77,47 +46,35 @@ export function Crate({ username, demo = false, onSignOut }: Props) {
     visibleRef.current = visible;
   }, [visible]);
 
-  // Which release is centred, so a filter change can keep it in view.
+  // Which release is centred, so an order change can keep it in view.
   const centreIdRef = useRef<number | null>(null);
   const handleCentreChange = useCallback((index: number) => {
-    setCentre(index);
     centreIdRef.current = visibleRef.current[index]?.id ?? null;
   }, []);
 
   /** Everything the user can change that moves records around in `visible`. */
-  const viewKey = useMemo(() => {
-    const deal = sort === "shuffle" ? shuffleSeed : "";
-    return [sort, deal, ...[...selected].sort()].join("|");
-  }, [selected, sort, shuffleSeed]);
+  const viewKey = useMemo(
+    () => [sort, sort === "shuffle" ? shuffleSeed : ""].join("|"),
+    [sort, shuffleSeed],
+  );
   const lastViewKey = useRef(viewKey);
 
   /**
-   * After the visible set is re-filtered or re-filed, stay on the record the
-   * user was looking at when it survived the change, and fall back to the start
-   * when it didn't. Deliberately keyed on the filter and order alone —
-   * collection pages arriving also change `visible`, and those must not yank
-   * the crate around.
+   * After the visible set is re-filed, stay on the record the user was looking
+   * at, and fall back to the start when it has yet to arrive. Deliberately
+   * keyed on the order alone — collection pages arriving also change `visible`,
+   * and those must not yank the crate around.
    */
   useEffect(() => {
     if (lastViewKey.current === viewKey) return;
     lastViewKey.current = viewKey;
 
-    setPanel(null);
+    setPanelIndex(null);
 
     const id = centreIdRef.current;
     const next = id === null ? -1 : visible.findIndex((a) => a.id === id);
     coverFlow.current?.goTo(next >= 0 ? next : 0, false);
   }, [viewKey, visible]);
-
-  const toggleTag = useCallback((tag: string) => {
-    setSelected((current) => {
-      const next = new Set(current);
-      if (!next.delete(tag)) next.add(tag);
-      return next;
-    });
-  }, []);
-
-  const clearTags = useCallback(() => setSelected(new Set()), []);
 
   /**
    * Choosing shuffle — including choosing it while it is already on — deals a
@@ -130,41 +87,16 @@ export function Crate({ username, demo = false, onSignOut }: Props) {
     setSort(mode);
   }, []);
 
-  const pick = useCallback(async () => {
-    if (spinning || !visible.length) return;
-
-    // Recent picks are ids; translate them into positions in the current view.
-    const recent = new Set(recentIds);
-    const exclude = [centre];
-    visible.forEach((album, index) => {
-      if (recent.has(album.id)) exclude.push(index);
-    });
-
-    const index = pickIndex(visible, { exclude });
-    if (index === null) return;
-
-    setPanel(null);
-    setSpinning(true);
-    try {
-      await coverFlow.current?.spinTo(index);
-    } finally {
-      setSpinning(false);
-    }
-    setRecentIds((current) => rememberPick(current, visible[index].id));
-    setPanel({ index, fromPick: true });
-  }, [centre, recentIds, spinning, visible]);
-
   const openCentre = useCallback((index: number) => {
-    setPanel({ index, fromPick: false });
+    setPanelIndex(index);
   }, []);
 
   const closePanel = useCallback(() => {
-    setPanel(null);
+    setPanelIndex(null);
     coverFlow.current?.focus();
   }, []);
 
-  const filtered = selected.size > 0;
-  const panelAlbum = panel ? visible[panel.index] : undefined;
+  const panelAlbum = panelIndex === null ? undefined : visible[panelIndex];
 
   return (
     <div className={styles.app}>
@@ -182,11 +114,7 @@ export function Crate({ username, demo = false, onSignOut }: Props) {
               {total ? ` / ${total.toLocaleString()}` : ""}…
             </span>
           ) : (
-            <span>
-              {filtered
-                ? `${visible.length.toLocaleString()} of ${loaded.toLocaleString()}`
-                : `${loaded.toLocaleString()} records`}
-            </span>
+            <span>{loaded.toLocaleString()} records</span>
           )}
           <button
             type="button"
@@ -227,49 +155,18 @@ export function Crate({ username, demo = false, onSignOut }: Props) {
         </div>
       ) : (
         <>
-          {visible.length === 0 ? (
-            <div className={styles.empty}>
-              <p>
-                Nothing matches those filters.{" "}
-                <button
-                  type="button"
-                  className={styles.link}
-                  onClick={clearTags}
-                >
-                  Clear them
-                </button>{" "}
-                to see the whole crate.
-              </p>
-            </div>
-          ) : (
-            <CoverFlow
-              albums={visible}
-              ref={coverFlow}
-              onCentreChange={handleCentreChange}
-              onSelect={openCentre}
-            />
-          )}
-          <PickerBar
-            albums={albums}
-            selected={selected}
-            sort={sort}
-            matchCount={visible.length}
-            spinning={spinning}
-            onToggle={toggleTag}
-            onClear={clearTags}
-            onSort={chooseSort}
-            onPick={pick}
+          <CoverFlow
+            albums={visible}
+            ref={coverFlow}
+            onCentreChange={handleCentreChange}
+            onSelect={openCentre}
           />
+          <OrderBar sort={sort} onSort={chooseSort} />
         </>
       )}
 
       {panelAlbum ? (
-        <AlbumDetail
-          album={panelAlbum}
-          onClose={closePanel}
-          onReroll={panel?.fromPick ? pick : undefined}
-          rerolling={spinning}
-        />
+        <AlbumDetail album={panelAlbum} onClose={closePanel} />
       ) : null}
     </div>
   );
