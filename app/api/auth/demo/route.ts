@@ -7,6 +7,7 @@ import {
 import { DiscogsApiError } from "@/lib/discogs/client";
 import { fetchIdentity } from "@/lib/discogs/collection";
 import type { SessionInfo } from "@/lib/discogs/types";
+import { guardPost } from "@/lib/guard";
 
 /**
  * Starts a demo session against the collection behind `DISCOGS_DEMO_TOKEN`, so
@@ -15,7 +16,12 @@ import type { SessionInfo } from "@/lib/discogs/types";
  * The token stays server-side: this sets only a marker cookie, and every
  * subsequent request resolves the credential from the environment again.
  */
-export async function POST(): Promise<Response> {
+export async function POST(request: Request): Promise<Response> {
+  // Unauthenticated and one Discogs call per hit, so without a ceiling anyone
+  // could hold the demo token at its 60/minute limit and keep the demo down.
+  const refused = guardPost(request, { limit: 10, bucket: "demo" });
+  if (refused) return refused;
+
   const token = demoToken();
   if (!token) {
     return jsonError("No demo collection is configured for this app.", 404);

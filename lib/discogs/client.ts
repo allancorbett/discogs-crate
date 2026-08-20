@@ -22,12 +22,6 @@ export class DiscogsApiError extends Error {
   }
 }
 
-/** Rate limit state from the most recent response, for the caller to pace on. */
-export interface RateLimit {
-  limit: number | null;
-  remaining: number | null;
-}
-
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export function userAgent(): string {
@@ -43,15 +37,6 @@ function buildUrl(
     if (value !== undefined) url.searchParams.set(key, String(value));
   }
   return url.toString();
-}
-
-function readRateLimit(response: Response): RateLimit {
-  const toNumber = (raw: string | null) =>
-    raw === null || raw === "" ? null : Number(raw);
-  return {
-    limit: toNumber(response.headers.get("x-discogs-ratelimit")),
-    remaining: toNumber(response.headers.get("x-discogs-ratelimit-remaining")),
-  };
 }
 
 /** How long to wait before retrying a 429, honouring Retry-After when given. */
@@ -74,15 +59,14 @@ async function errorMessage(response: Response): Promise<string> {
   return response.statusText || `Discogs request failed (${response.status})`;
 }
 
-export interface DiscogsResult<T> {
-  data: T;
-  rateLimit: RateLimit;
-}
-
 /**
  * Single entry point for every Discogs call. Attaches the User-Agent and the
  * strategy's credential, retries rate-limited requests, and normalizes errors
  * into `DiscogsApiError` so route handlers can map status codes directly.
+ *
+ * Discogs reports the remaining budget on every response. Nothing reads it, so
+ * nothing parses it — pacing on it would mean a caller that could act on the
+ * answer, and there isn't one.
  */
 export async function discogsFetch<T>(
   path: string,
@@ -91,7 +75,7 @@ export async function discogsFetch<T>(
     method?: string;
     searchParams?: Record<string, string | number | undefined>;
   } = {},
-): Promise<DiscogsResult<T>> {
+): Promise<T> {
   const method = options.method ?? "GET";
   const url = buildUrl(path, options.searchParams);
 
@@ -115,10 +99,7 @@ export async function discogsFetch<T>(
       throw new DiscogsApiError(await errorMessage(response), response.status);
     }
 
-    return {
-      data: (await response.json()) as T,
-      rateLimit: readRateLimit(response),
-    };
+    return (await response.json()) as T;
   }
 
   throw new DiscogsApiError(

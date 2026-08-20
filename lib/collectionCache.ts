@@ -2,7 +2,9 @@ import type { Album } from "./discogs/types";
 
 const PREFIX = "crate:collection:";
 const TTL_MS = 24 * 60 * 60 * 1000;
-const VERSION = 1;
+// Bump whenever the stored Album shape changes — a stale entry from an older
+// version is dropped on read rather than handed to code expecting new fields.
+const VERSION = 2;
 
 interface CacheEntry {
   version: number;
@@ -89,6 +91,32 @@ export function clearCache(username: string): void {
 
   try {
     localStorage.removeItem(keyFor(username));
+  } catch {
+    // Ignore — see writeCache.
+  }
+}
+
+/**
+ * Drops every cached collection, whoever it belongs to. This is what signing
+ * out calls: the session cookies go, but a crate left in localStorage would
+ * outlive them by up to a day, and on a shared machine the next person can
+ * read it straight out of devtools. Sweeping by prefix rather than by the
+ * current username also clears an entry left behind by an earlier account.
+ */
+export function clearAllCaches(): void {
+  cancelPending?.();
+  cancelPending = null;
+
+  try {
+    // Collected before anything is removed: removing shifts the indices under
+    // an iteration that is still walking them.
+    const ours: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(PREFIX)) ours.push(key);
+    }
+
+    for (const key of ours) localStorage.removeItem(key);
   } catch {
     // Ignore — see writeCache.
   }

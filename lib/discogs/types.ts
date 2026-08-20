@@ -54,10 +54,6 @@ export interface DiscogsBasicInformation {
 
 export interface DiscogsCollectionItem {
   id: number;
-  instance_id: number;
-  folder_id?: number;
-  date_added: string;
-  rating: number;
   basic_information: DiscogsBasicInformation;
 }
 
@@ -106,7 +102,6 @@ export interface DiscogsReleaseResponse {
   country?: string;
   released?: string;
   released_formatted?: string;
-  notes?: string;
   artists: DiscogsArtist[];
   genres?: string[];
   styles?: string[];
@@ -115,7 +110,6 @@ export interface DiscogsReleaseResponse {
   tracklist: DiscogsTrack[];
   videos?: DiscogsVideo[];
   images?: { type: string; uri: string; width: number; height: number }[];
-  community?: { rating?: { count: number; average: number } };
 }
 
 // ---------------------------------------------------------------------------
@@ -125,7 +119,6 @@ export interface DiscogsReleaseResponse {
 /** One record in the collection, flattened for rendering and filtering. */
 export interface Album {
   id: number;
-  instanceId: number;
   artist: string;
   title: string;
   year: number | null;
@@ -135,7 +128,6 @@ export interface Album {
   styles: string[];
   formats: string[];
   labels: string[];
-  dateAdded: string;
   discogsUrl: string;
 }
 
@@ -162,7 +154,6 @@ export interface ReleaseDetail {
   year: number | null;
   country: string | null;
   released: string | null;
-  notes: string | null;
   coverImage: string | null;
   genres: string[];
   styles: string[];
@@ -170,7 +161,6 @@ export interface ReleaseDetail {
   formats: string[];
   tracklist: Track[];
   videos: { uri: string; title: string }[];
-  rating: { average: number; count: number } | null;
   discogsUrl: string;
 }
 

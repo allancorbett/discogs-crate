@@ -56,6 +56,24 @@ async function resolveUsername(auth: AuthStrategy): Promise<string> {
 }
 
 /**
+ * What to tell the browser about an upstream failure.
+ *
+ * Discogs' own wording used to go straight through. It is not written for this
+ * app's users, it is not ours to change, and it describes a request they never
+ * made — so it is logged where it is useful and replaced with something that
+ * says what they can do about it. The status is kept, since the client already
+ * branches on it.
+ */
+function upstreamMessage(status: number): string {
+  if (status === 404) return "Discogs has nothing at that address.";
+  if (status === 429) {
+    return "Discogs is rate limiting this app. Wait a minute and try again.";
+  }
+  if (status >= 500) return "Discogs is having trouble. Try again shortly.";
+  return "Discogs could not complete that request.";
+}
+
+/**
  * Wraps a route handler with the session lookup and error mapping every
  * Discogs-backed route needs. A 401 from Discogs means the stored token has
  * been revoked, so the session is cleared and the client falls back to the
@@ -75,7 +93,8 @@ export async function withAuth(
         await clearSession();
         return jsonError("Your Discogs token is no longer valid.", 401);
       }
-      return jsonError(error.message, error.status);
+      console.error("Discogs request failed", error.status, error.message);
+      return jsonError(upstreamMessage(error.status), error.status);
     }
     console.error("Unexpected Discogs failure", error);
     return jsonError("Could not reach Discogs. Try again.", 502);

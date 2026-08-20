@@ -87,6 +87,33 @@ requests/minute) — a busy demo will throttle. A Discogs personal access token
 also grants **write** access to the account it belongs to, so prefer a token
 from a secondary account, and never commit the value.
 
+The demo credential is the deployment's, not the visitor's, so the app never
+lets a visitor choose which account it is spent on: the username comes from the
+token's own identity rather than from the session cookie. `POST /api/auth/demo`
+is also origin-checked and capped at ten starts a minute per client, so nobody
+can sit on the demo's rate limit and keep it down for everyone else.
+
+## Security posture
+
+Small app, small attack surface, but the parts that touch a credential are
+deliberate:
+
+- **Every credential is server-side.** Tokens live in `httpOnly` cookies and are
+  attached by route handlers; the browser never sees one.
+- **Cookies are never trusted to name an account.** A visitor can edit any
+  cookie, so where a request's credential is the server's, the username is
+  resolved from that credential. See `resolveUsername` in `lib/api.ts`.
+- **The OAuth callback origin is pinned in production** rather than derived from
+  request headers. See the OAuth section above.
+- **State-changing POSTs are origin-checked**, and the two unauthenticated ones
+  are rate limited — `lib/guard.ts`. The limiter is per-instance and in-memory:
+  a brake on the obvious abuse, not a quota system.
+- **A nonce-based Content-Security-Policy** is set in `proxy.ts`, along with
+  `X-Content-Type-Options`, `Referrer-Policy` and `frame-ancestors 'none'`.
+  Scripts are allowed by nonce rather than `'unsafe-inline'`.
+- **Upstream errors are not relayed verbatim.** Discogs' wording is logged and
+  replaced with something written for this app's users.
+
 ## How it fits together
 
 Every Discogs call is proxied through this app's own route handlers rather than
@@ -96,7 +123,7 @@ browser calls would work — but proxying buys four things:
 - The token is never exposed to client-side JavaScript.
 - Discogs **requires** a descriptive `User-Agent`, and browsers forbid scripts
   from setting that header. A request without one is rejected outright.
-- Rate-limit handling and retries live in one place.
+- Retries and 429 backoff live in one place.
 - Adding OAuth touched only server code — no client changes at all.
 
 ```
@@ -108,6 +135,8 @@ app/api/release/[id]                       tracklist and extended metadata
 lib/discogs/auth.ts        AuthStrategy seam (see below) and session cookies
 lib/discogs/oauth.ts       OAuth 1.0a signing and the three-legged flow
 lib/discogs/client.ts      fetch wrapper: User-Agent, credential, 429 backoff
+lib/guard.ts               origin check and rate limit for unauthenticated POSTs
+proxy.ts                   CSP nonce and response security headers
 lib/discogs/collection.ts  paging and normalization to `Album`
 lib/coverflow.ts           carousel geometry and index maths (pure)
 lib/coverflowEngine.ts     the carousel's DOM/animation controller

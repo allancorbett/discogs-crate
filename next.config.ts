@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
   devIndicators: {
     position: "bottom-right",
   },
+
+  // Nothing gains from advertising the framework and version to a scanner.
+  poweredByHeader: false,
 };
 
 export default nextConfig;

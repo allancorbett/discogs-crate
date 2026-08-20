@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   SLOT_COUNT,
+  easeOutBack,
+  easeOutQuint,
   geometryFor,
   planSpin,
   shortestDelta,
@@ -172,5 +174,64 @@ describe("planSpin", () => {
     const plan = planSpin(5, 0, 0);
     expect(plan.to).toBe(5);
     expect(plan.durationMs).toBe(0);
+  });
+});
+
+describe("easeOutQuint", () => {
+  it("starts at the start and ends at the end", () => {
+    expect(easeOutQuint(0)).toBe(0);
+    expect(easeOutQuint(1)).toBe(1);
+  });
+
+  it("front-loads the movement, which is what makes it read as a spin", () => {
+    // Half the time, well past half the distance.
+    expect(easeOutQuint(0.5)).toBeGreaterThan(0.9);
+  });
+
+  it("never goes backwards", () => {
+    let previous = -Infinity;
+    for (let t = 0; t <= 1; t += 0.05) {
+      const value = easeOutQuint(t);
+      expect(value).toBeGreaterThanOrEqual(previous);
+      previous = value;
+    }
+  });
+
+  it("stays within the travel it was given", () => {
+    for (let t = 0; t <= 1; t += 0.05) {
+      expect(easeOutQuint(t)).toBeGreaterThanOrEqual(0);
+      expect(easeOutQuint(t)).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+describe("easeOutBack", () => {
+  it("starts at the start and settles exactly on the target", () => {
+    expect(easeOutBack(0)).toBeCloseTo(0);
+    expect(easeOutBack(1)).toBeCloseTo(1);
+  });
+
+  it("overshoots before it settles — the point of the curve", () => {
+    const peak = Math.max(
+      ...Array.from({ length: 101 }, (_, i) => easeOutBack(i / 100)),
+    );
+    expect(peak).toBeGreaterThan(1);
+  });
+
+  it("keeps the overshoot small enough to read as a settle, not a bounce", () => {
+    const peak = Math.max(
+      ...Array.from({ length: 101 }, (_, i) => easeOutBack(i / 100)),
+    );
+    expect(peak).toBeLessThan(1.1);
+  });
+
+  it("takes a bigger overshoot when asked for one", () => {
+    const gentle = Math.max(
+      ...Array.from({ length: 101 }, (_, i) => easeOutBack(i / 100, 0.7)),
+    );
+    const strong = Math.max(
+      ...Array.from({ length: 101 }, (_, i) => easeOutBack(i / 100, 2)),
+    );
+    expect(strong).toBeGreaterThan(gentle);
   });
 });

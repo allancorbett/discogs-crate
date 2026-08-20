@@ -3,6 +3,7 @@ import { PersonalTokenStrategy, setSession } from "@/lib/discogs/auth";
 import { DiscogsApiError } from "@/lib/discogs/client";
 import { fetchIdentity } from "@/lib/discogs/collection";
 import type { SessionInfo } from "@/lib/discogs/types";
+import { guardPost } from "@/lib/guard";
 
 /**
  * Exchanges a personal access token for a session. The token is verified
@@ -10,6 +11,14 @@ import type { SessionInfo } from "@/lib/discogs/types";
  * a clear message instead of surfacing as a mysterious empty collection later.
  */
 export async function POST(request: Request): Promise<Response> {
+  // The JSON content type already forces a preflight, so this is mostly about
+  // the second job this route can be put to: it answers, quickly and
+  // distinguishably, whether an arbitrary Discogs token is still live. Ten
+  // tries a minute is plenty for someone fixing a bad paste and useless for
+  // walking a stolen list.
+  const refused = guardPost(request, { limit: 10, bucket: "token" });
+  if (refused) return refused;
+
   let token: unknown;
   try {
     ({ token } = (await request.json()) as { token?: unknown });
@@ -39,7 +48,8 @@ export async function POST(request: Request): Promise<Response> {
           401,
         );
       }
-      return jsonError(error.message, error.status);
+      console.error("Token verification failed", error.status, error.message);
+      return jsonError("Discogs could not verify that token.", error.status);
     }
     console.error("Token verification failed", error);
     return jsonError("Could not reach Discogs. Try again.", 502);
