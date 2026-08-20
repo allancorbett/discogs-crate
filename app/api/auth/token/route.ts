@@ -1,7 +1,7 @@
 import { jsonError } from "@/lib/api";
 import { PersonalTokenStrategy, setSession } from "@/lib/discogs/auth";
 import { DiscogsApiError } from "@/lib/discogs/client";
-import { fetchIdentity, fetchProfile } from "@/lib/discogs/collection";
+import { fetchIdentity } from "@/lib/discogs/collection";
 import type { SessionInfo } from "@/lib/discogs/types";
 
 /**
@@ -27,18 +27,9 @@ export async function POST(request: Request): Promise<Response> {
     const identity = await fetchIdentity(auth);
     await setSession(token.trim(), identity.username);
 
-    // Decorative only — a failure here must not block signing in.
-    let avatarUrl: string | undefined;
-    try {
-      avatarUrl = (await fetchProfile(auth, identity.username)).avatar_url;
-    } catch {
-      avatarUrl = undefined;
-    }
-
     return Response.json({
       authenticated: true,
       username: identity.username,
-      avatarUrl,
     } satisfies SessionInfo);
   } catch (error) {
     if (error instanceof DiscogsApiError) {

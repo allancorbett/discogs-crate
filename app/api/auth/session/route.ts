@@ -7,7 +7,7 @@ import {
   isOAuthConfigured,
 } from "@/lib/discogs/auth";
 import { DiscogsApiError } from "@/lib/discogs/client";
-import { fetchIdentity, fetchProfile } from "@/lib/discogs/collection";
+import { fetchIdentity } from "@/lib/discogs/collection";
 import type { SessionInfo } from "@/lib/discogs/types";
 
 /**
@@ -15,6 +15,10 @@ import type { SessionInfo } from "@/lib/discogs/types";
  * the cookie blindly: it costs one request against a 60/min budget and means a
  * revoked token sends the user back to the gate immediately instead of
  * breaking further in.
+ *
+ * The same request answers who the credential belongs to, so the username the
+ * app then displays and files its cache under comes from Discogs rather than
+ * from a cookie the visitor could have edited.
  */
 export async function GET(): Promise<Response> {
   const demoAvailable = isDemoConfigured();
@@ -31,14 +35,11 @@ export async function GET(): Promise<Response> {
   const demo = await isDemoSession();
 
   try {
-    const username =
-      (await getSessionUsername()) ?? (await fetchIdentity(auth)).username;
-    const profile = await fetchProfile(auth, username);
+    const { username } = await fetchIdentity(auth);
 
     return Response.json({
       authenticated: true,
       username,
-      avatarUrl: profile.avatar_url,
       demo,
       demoAvailable,
       oauthAvailable,
@@ -52,9 +53,11 @@ export async function GET(): Promise<Response> {
       return Response.json(signedOut);
     }
     // A network blip shouldn't sign the user out; report the session as live
-    // and let the collection request surface the real problem.
+    // and let the collection request surface the real problem. The cookie is
+    // only trusted for the name on screen here — never to choose an account to
+    // fetch, which is why a demo session falls back to no name at all.
     console.error("Session check failed", error);
-    const username = await getSessionUsername();
+    const username = demo ? null : await getSessionUsername();
     return Response.json(
       username
         ? { authenticated: true, username, demo, demoAvailable, oauthAvailable }

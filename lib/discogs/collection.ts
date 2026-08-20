@@ -9,7 +9,6 @@ import type {
   DiscogsFormat,
   DiscogsIdentity,
   DiscogsReleaseResponse,
-  DiscogsUserProfile,
   ReleaseDetail,
   Track,
 } from "./types";
@@ -124,17 +123,6 @@ export async function fetchIdentity(
   auth: AuthStrategy,
 ): Promise<DiscogsIdentity> {
   const { data } = await discogsFetch<DiscogsIdentity>("/oauth/identity", auth);
-  return data;
-}
-
-export async function fetchProfile(
-  auth: AuthStrategy,
-  username: string,
-): Promise<DiscogsUserProfile> {
-  const { data } = await discogsFetch<DiscogsUserProfile>(
-    `/users/${encodeURIComponent(username)}`,
-    auth,
-  );
   return data;
 }
 

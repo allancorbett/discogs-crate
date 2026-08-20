@@ -81,13 +81,6 @@ export interface DiscogsIdentity {
   consumer_name: string;
 }
 
-export interface DiscogsUserProfile {
-  id: number;
-  username: string;
-  avatar_url?: string;
-  num_collection?: number;
-}
-
 export interface DiscogsTrack {
   position: string;
   /** "track" for real tracks; "heading" / "index" for structural rows. */
@@ -184,7 +177,6 @@ export interface ReleaseDetail {
 export interface SessionInfo {
   authenticated: boolean;
   username?: string;
-  avatarUrl?: string;
   /** This session is browsing the shared demo collection, not the user's own. */
   demo?: boolean;
   /** Whether a demo is offered at all, so the sign-in gate knows to show it. */
