@@ -55,13 +55,13 @@ export class OAuth1Strategy implements AuthStrategy {
   }
 }
 
-export const SESSION_COOKIE = "discogs_token";
-export const USER_COOKIE = "discogs_user";
-export const DEMO_COOKIE = "discogs_demo";
-export const OAUTH_TOKEN_COOKIE = "discogs_oauth_token";
-export const OAUTH_SECRET_COOKIE = "discogs_oauth_secret";
+const SESSION_COOKIE = "discogs_token";
+const USER_COOKIE = "discogs_user";
+const DEMO_COOKIE = "discogs_demo";
+const OAUTH_TOKEN_COOKIE = "discogs_oauth_token";
+const OAUTH_SECRET_COOKIE = "discogs_oauth_secret";
 /** Holds the *request* token secret for the few seconds the flow is in flight. */
-export const OAUTH_PENDING_COOKIE = "discogs_oauth_pending";
+const OAUTH_PENDING_COOKIE = "discogs_oauth_pending";
 
 /** A year. Discogs personal tokens do not expire on their own. */
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
@@ -84,6 +84,27 @@ export function isDemoConfigured(): boolean {
 }
 
 /**
+ * Shared shape for every session cookie this app sets.
+ *
+ * `httpOnly` is on for all of them, the username included. Nothing on the
+ * client reads it — the UI gets the name from `/api/auth/session` — so leaving
+ * it script-readable only offered an injected script one more thing to take.
+ * It is worth being clear about what this does and does not buy: `httpOnly`
+ * stops scripts reading a cookie, not a person retyping one in devtools, so
+ * the server still never trusts the username to choose whose collection to
+ * fetch. See `resolveUsername` in lib/api.ts.
+ */
+function sessionCookie(maxAge: number) {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge,
+  };
+}
+
+/**
  * The token lives in an httpOnly cookie so client JS can never read it; the
  * browser only ever talks to our own routes, which attach the credential
  * server-side. The username is stored alongside it — not a secret, and having
@@ -94,14 +115,9 @@ export async function setSession(
   username: string,
 ): Promise<void> {
   const store = await cookies();
-  const base = {
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: COOKIE_MAX_AGE,
-  };
-  store.set(SESSION_COOKIE, token, { ...base, httpOnly: true });
-  store.set(USER_COOKIE, username, { ...base, httpOnly: false });
+  const base = sessionCookie(COOKIE_MAX_AGE);
+  store.set(SESSION_COOKIE, token, base);
+  store.set(USER_COOKIE, username, base);
 }
 
 /**
@@ -112,14 +128,9 @@ export async function setSession(
  */
 export async function setDemoSession(username: string): Promise<void> {
   const store = await cookies();
-  const base = {
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: DEMO_MAX_AGE,
-  };
-  store.set(DEMO_COOKIE, "1", { ...base, httpOnly: true });
-  store.set(USER_COOKIE, username, { ...base, httpOnly: false });
+  const base = sessionCookie(DEMO_MAX_AGE);
+  store.set(DEMO_COOKIE, "1", base);
+  store.set(USER_COOKIE, username, base);
 }
 
 /** Stores the access token from a completed OAuth flow. */
@@ -129,15 +140,10 @@ export async function setOAuthSession(
   username: string,
 ): Promise<void> {
   const store = await cookies();
-  const base = {
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: COOKIE_MAX_AGE,
-  };
-  store.set(OAUTH_TOKEN_COOKIE, token, { ...base, httpOnly: true });
-  store.set(OAUTH_SECRET_COOKIE, tokenSecret, { ...base, httpOnly: true });
-  store.set(USER_COOKIE, username, { ...base, httpOnly: false });
+  const base = sessionCookie(COOKIE_MAX_AGE);
+  store.set(OAUTH_TOKEN_COOKIE, token, base);
+  store.set(OAUTH_SECRET_COOKIE, tokenSecret, base);
+  store.set(USER_COOKIE, username, base);
   store.delete(OAUTH_PENDING_COOKIE);
 }
 
@@ -151,13 +157,11 @@ export async function setPendingOAuth(
   tokenSecret: string,
 ): Promise<void> {
   const store = await cookies();
-  store.set(OAUTH_PENDING_COOKIE, `${token}:${tokenSecret}`, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 15 * 60,
-  });
+  store.set(
+    OAUTH_PENDING_COOKIE,
+    `${token}:${tokenSecret}`,
+    sessionCookie(15 * 60),
+  );
 }
 
 export async function takePendingOAuth(): Promise<{

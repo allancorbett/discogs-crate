@@ -8,7 +8,6 @@ function album(partial: Partial<Album> = {}): Album {
   const id = partial.id ?? nextId++;
   return {
     id,
-    instanceId: id,
     artist: "Unknown Artist",
     title: "Untitled",
     year: null,
@@ -18,7 +17,6 @@ function album(partial: Partial<Album> = {}): Album {
     styles: [],
     formats: [],
     labels: [],
-    dateAdded: "2024-01-01T00:00:00-08:00",
     discogsUrl: "",
     ...partial,
   };

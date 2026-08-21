@@ -31,7 +31,7 @@ httpOnly cookies that client-side JavaScript cannot read.
 | `DISCOGS_USER_AGENT`      | No       | Sent on every Discogs request. Defaults to a generic string; set it to something identifying your deployment, e.g. `Crate/1.0 +https://crate.example.com`. |
 | `DISCOGS_CONSUMER_KEY`    | No       | Enables "Sign in with Discogs" (see below). Both this and the secret must be set.                                                                          |
 | `DISCOGS_CONSUMER_SECRET` | No       | The other half of the OAuth credentials.                                                                                                                  |
-| `DISCOGS_APP_URL`         | No       | Overrides the origin used to build the OAuth callback URL. Normally unnecessary — it's derived from the request.                                           |
+| `DISCOGS_APP_URL`         | In prod, with OAuth | The origin used to build the OAuth callback URL. Required in production whenever OAuth is configured; derived from the request in development.               |
 | `DISCOGS_DEMO_TOKEN`      | No       | Enables the demo (see below). Leave unset and the demo button never appears.                                                                               |
 
 ### Sign in with Discogs (OAuth)
@@ -54,12 +54,19 @@ shaped the implementation:
   request headers routinely end up in proxy logs, error trackers and platform
   request logs. HMAC keeps the secrets local.
 
-The callback URL is derived from the incoming request, so localhost and Vercel
-preview deployments work with no extra configuration; Discogs does not require
-it to be registered in advance. While the user is away approving the app, the
-request token secret sits in a 15-minute `httpOnly` cookie, and the token that
-comes back must match the one this browser started with — otherwise someone
-else's approval could be replayed into the session.
+Discogs does not require the callback URL to be registered in advance, so in
+development it is derived from the incoming request and localhost works with no
+extra configuration. **In production you must set `DISCOGS_APP_URL`**, and the
+flow refuses to start without it. The derived origin comes from the request's
+host headers — Next honours `X-Forwarded-Host` — and a proxy that passes a
+forged one through would let an attacker point the callback at their own host
+while holding the matching request token secret, which is enough to finish
+somebody else's sign-in. Pinning the origin is what closes that.
+
+While the user is away approving the app, the request token secret sits in a
+15-minute `httpOnly` cookie, and the token that comes back must match the one
+this browser started with — otherwise someone else's approval could be replayed
+into the session.
 
 ### Demo mode
 
@@ -80,6 +87,33 @@ requests/minute) — a busy demo will throttle. A Discogs personal access token
 also grants **write** access to the account it belongs to, so prefer a token
 from a secondary account, and never commit the value.
 
+The demo credential is the deployment's, not the visitor's, so the app never
+lets a visitor choose which account it is spent on: the username comes from the
+token's own identity rather than from the session cookie. `POST /api/auth/demo`
+is also origin-checked and capped at ten starts a minute per client, so nobody
+can sit on the demo's rate limit and keep it down for everyone else.
+
+## Security posture
+
+Small app, small attack surface, but the parts that touch a credential are
+deliberate:
+
+- **Every credential is server-side.** Tokens live in `httpOnly` cookies and are
+  attached by route handlers; the browser never sees one.
+- **Cookies are never trusted to name an account.** A visitor can edit any
+  cookie, so where a request's credential is the server's, the username is
+  resolved from that credential. See `resolveUsername` in `lib/api.ts`.
+- **The OAuth callback origin is pinned in production** rather than derived from
+  request headers. See the OAuth section above.
+- **State-changing POSTs are origin-checked**, and the two unauthenticated ones
+  are rate limited — `lib/guard.ts`. The limiter is per-instance and in-memory:
+  a brake on the obvious abuse, not a quota system.
+- **A nonce-based Content-Security-Policy** is set in `proxy.ts`, along with
+  `X-Content-Type-Options`, `Referrer-Policy` and `frame-ancestors 'none'`.
+  Scripts are allowed by nonce rather than `'unsafe-inline'`.
+- **Upstream errors are not relayed verbatim.** Discogs' wording is logged and
+  replaced with something written for this app's users.
+
 ## How it fits together
 
 Every Discogs call is proxied through this app's own route handlers rather than
@@ -89,7 +123,7 @@ browser calls would work — but proxying buys four things:
 - The token is never exposed to client-side JavaScript.
 - Discogs **requires** a descriptive `User-Agent`, and browsers forbid scripts
   from setting that header. A request without one is rejected outright.
-- Rate-limit handling and retries live in one place.
+- Retries and 429 backoff live in one place.
 - Adding OAuth touched only server code — no client changes at all.
 
 ```
@@ -101,6 +135,8 @@ app/api/release/[id]                       tracklist and extended metadata
 lib/discogs/auth.ts        AuthStrategy seam (see below) and session cookies
 lib/discogs/oauth.ts       OAuth 1.0a signing and the three-legged flow
 lib/discogs/client.ts      fetch wrapper: User-Agent, credential, 429 backoff
+lib/guard.ts               origin check and rate limit for unauthenticated POSTs
+proxy.ts                   CSP nonce and response security headers
 lib/discogs/collection.ts  paging and normalization to `Album`
 lib/coverflow.ts           carousel geometry and index maths (pure)
 lib/coverflowEngine.ts     the carousel's DOM/animation controller

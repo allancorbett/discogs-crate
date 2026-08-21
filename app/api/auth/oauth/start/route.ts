@@ -6,7 +6,7 @@ import {
   fetchRequestToken,
   oauthConsumer,
 } from "@/lib/discogs/oauth";
-import { callbackUrl, gateUrl } from "../shared";
+import { UntrustedOriginError, callbackUrl, gateRedirect } from "../shared";
 
 /**
  * Leg one of the OAuth dance: take a request token, park its secret in a
@@ -14,15 +14,23 @@ import { callbackUrl, gateUrl } from "../shared";
  */
 export async function GET(request: NextRequest): Promise<Response> {
   const consumer = oauthConsumer();
-  if (!consumer) {
-    return Response.redirect(gateUrl(request, "oauth_unconfigured"), 302);
+  if (!consumer) return gateRedirect("oauth_unconfigured");
+
+  let callback: string;
+  try {
+    callback = callbackUrl(request);
+  } catch (error) {
+    // A deployment with OAuth credentials but no pinned origin. Refusing is
+    // the whole point — see the note in shared.ts.
+    console.error(
+      "Refusing to start the Discogs OAuth flow",
+      error instanceof UntrustedOriginError ? error.message : error,
+    );
+    return gateRedirect("oauth_unconfigured");
   }
 
   try {
-    const requestToken = await fetchRequestToken(
-      consumer,
-      callbackUrl(request),
-    );
+    const requestToken = await fetchRequestToken(consumer, callback);
     await setPendingOAuth(requestToken.token, requestToken.tokenSecret);
 
     return Response.redirect(authorizeUrl(requestToken.token), 302);
@@ -31,6 +39,6 @@ export async function GET(request: NextRequest): Promise<Response> {
       "Could not get a Discogs request token",
       error instanceof OAuthFlowError ? error.message : error,
     );
-    return Response.redirect(gateUrl(request, "oauth_failed"), 302);
+    return gateRedirect("oauth_failed");
   }
 }

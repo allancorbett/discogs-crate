@@ -11,7 +11,7 @@ import {
   fetchAccessToken,
   oauthConsumer,
 } from "@/lib/discogs/oauth";
-import { gateUrl } from "../shared";
+import { gateRedirect } from "../shared";
 
 /**
  * Leg three: Discogs sends the user back here after they approve (or decline)
@@ -25,25 +25,25 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const consumer = oauthConsumer();
   if (!consumer) {
-    return Response.redirect(gateUrl(request, "oauth_unconfigured"), 302);
+    return gateRedirect("oauth_unconfigured");
   }
 
   // Discogs sends the user back with no verifier when they decline.
   if (!token || !verifier) {
     await clearPendingOAuth();
-    return Response.redirect(gateUrl(request, "oauth_declined"), 302);
+    return gateRedirect("oauth_declined");
   }
 
   const pending = await takePendingOAuth();
   if (!pending) {
-    return Response.redirect(gateUrl(request, "oauth_expired"), 302);
+    return gateRedirect("oauth_expired");
   }
 
   // The returned token must be the one this browser started with — otherwise
   // someone else's approval is being replayed into this session.
   if (pending.token !== token) {
     await clearPendingOAuth();
-    return Response.redirect(gateUrl(request, "oauth_mismatch"), 302);
+    return gateRedirect("oauth_mismatch");
   }
 
   try {
@@ -60,13 +60,13 @@ export async function GET(request: NextRequest): Promise<Response> {
     );
 
     await setOAuthSession(access.token, access.tokenSecret, identity.username);
-    return Response.redirect(gateUrl(request), 302);
+    return gateRedirect();
   } catch (error) {
     console.error(
       "OAuth access token exchange failed",
       error instanceof OAuthFlowError ? error.message : error,
     );
     await clearPendingOAuth();
-    return Response.redirect(gateUrl(request, "oauth_failed"), 302);
+    return gateRedirect("oauth_failed");
   }
 }

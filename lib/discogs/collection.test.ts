@@ -116,9 +116,6 @@ describe("formatTags", () => {
 describe("normalizeAlbum", () => {
   const item: DiscogsCollectionItem = {
     id: 7024,
-    instance_id: 244018,
-    date_added: "2009-08-20T07:00:00-07:00",
-    rating: 0,
     basic_information: {
       id: 7024,
       master_id: 82134,
@@ -154,7 +151,6 @@ describe("normalizeAlbum", () => {
   it("flattens a collection item for rendering", () => {
     expect(normalizeAlbum(item)).toEqual({
       id: 7024,
-      instanceId: 244018,
       artist: "Aphex Twin",
       title: "Selected Ambient Works",
       year: 1992,
@@ -164,7 +160,6 @@ describe("normalizeAlbum", () => {
       styles: ["Ambient", "Techno"],
       formats: ["Vinyl", "LP"],
       labels: ["Apollo"],
-      dateAdded: "2009-08-20T07:00:00-07:00",
       discogsUrl: "https://www.discogs.com/release/7024",
     });
   });

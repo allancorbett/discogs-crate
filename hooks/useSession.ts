@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { clearAllCaches } from "@/lib/collectionCache";
 import type { SessionInfo } from "@/lib/discogs/types";
 
 interface UseSession {
@@ -71,7 +72,18 @@ export function useSession(): UseSession {
   }, []);
 
   const signOut = useCallback(async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    // Local first, and unconditionally: the collection the cookies authorised
+    // would otherwise sit in localStorage for the rest of its day-long TTL, and
+    // a failed request is exactly when it matters that it doesn't.
+    clearAllCaches();
+
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // The cookies may outlive a network failure. The next session check
+      // settles that; nothing here should block the return to the gate.
+    }
+
     // Keep the deployment's capabilities so the gate still offers the same
     // sign-in options after signing out.
     setSession((current) => ({
