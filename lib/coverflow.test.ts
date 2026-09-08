@@ -104,9 +104,15 @@ describe("geometryFor", () => {
     expect(far).toBeLessThan(near);
   });
 
-  it("paints covers nearer the centre in front", () => {
-    expect(geometryFor(1).zIndex).toBeGreaterThan(geometryFor(4).zIndex);
-    expect(geometryFor(0).zIndex).toBeGreaterThan(geometryFor(1).zIndex);
+  it("keeps the centre cover on top and stacks the rest outward", () => {
+    expect(geometryFor(0).zIndex).toBe(1000);
+    expect(geometryFor(1).zIndex).toBe(900);
+    expect(geometryFor(2).zIndex).toBe(910);
+    expect(geometryFor(3).zIndex).toBe(920);
+    // The centre always wins, even against covers stacked far out.
+    expect(geometryFor(0).zIndex).toBeGreaterThan(geometryFor(8).zIndex);
+    // Past the immediate neighbour, farther covers climb back above nearer ones.
+    expect(geometryFor(4).zIndex).toBeGreaterThan(geometryFor(1).zIndex);
   });
 
   it("fades the window edge out instead of popping it", () => {
