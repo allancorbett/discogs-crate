@@ -80,7 +80,12 @@ export function geometryFor(distance: number): Geometry {
     rotate: inner * ANGLE,
     scale: 1 + CENTRE_LIFT * (1 - Math.abs(inner)),
     opacity: clamp(fade, 0, 1),
-    zIndex: 1000 - Math.round(magnitude * 10),
+    // The centre cover sits on top of everything. Its immediate neighbours
+    // drop sharply below it (1000 -> 900) so the centre never gets buried,
+    // but beyond that the stack reverses: covers further out climb back up
+    // by 10 per step, so each one overlaps the (rotated, half-hidden) cover
+    // in front of it rather than being hidden beneath it.
+    zIndex: Math.round(1000 - Math.abs(inner) * 100 + Math.abs(outer) * 10),
   };
 }
 

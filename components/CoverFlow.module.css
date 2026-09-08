@@ -40,8 +40,8 @@
  *
  * Each slot is instead projected against this perspective individually and
  * flattened, so paint order is plain z-index — which `geometryFor` already
- * makes strictly ordered by distance from the centre. The look is unchanged:
- * all covers still share one vanishing point.
+ * keeps the centre cover on top and the rest correctly overlapping each
+ * other. The look is unchanged: all covers still share one vanishing point.
  */
 .track {
   /* Fallback for engines without container query units. Viewport height is a
