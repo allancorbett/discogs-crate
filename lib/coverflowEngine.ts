@@ -8,6 +8,21 @@ import {
   slotPosition,
   wrapIndex,
 } from "./coverflow";
+import {
+  FOLLOW_SPRING,
+  FRICTION,
+  HANDOFF_SPEED,
+  SETTLE_SPRING,
+  SETTLE_SPRING_CALM,
+  coast,
+  glideVelocity,
+  isAtRest,
+  leanFor,
+  restingPoint,
+  stepSpring,
+  swaySpring,
+  type Body,
+} from "./coverflowPhysics";
 import type { Album } from "./discogs/types";
 
 /**
@@ -17,6 +32,11 @@ import type { Album } from "./discogs/types";
  * every slot's transform on every animation frame, and routing that through
  * React state would mean a full render per frame during a drag or spin. React
  * owns the markup; this owns everything that moves.
+ *
+ * Motion is simulated rather than tweened (see coverflowPhysics): a finger or
+ * wheel pulls the carousel along on a stiff spring, a release lets it coast
+ * under drag, and a softer spring catches it on a cover. Nothing has a fixed
+ * duration — how long a move takes falls out of how hard it was thrown.
  */
 
 export interface SlotElements {
@@ -56,7 +76,17 @@ interface SlotState extends SlotElements {
   lastZIndex: string;
   lastFilter: string;
   lastDisplay: string;
+  /** How far this cover is leaning, in degrees, and how fast that's changing. */
+  sway: Body;
 }
+
+/**
+ * - follow: tethered to a finger or wheel by a stiff spring.
+ * - coast: thrown, and slowing under drag.
+ * - settle: caught by the spring onto `target`.
+ * - animation: a scripted spin (spinTo), the one thing that isn't simulated.
+ */
+type Mode = "follow" | "coast" | "settle" | "animation";
 
 interface Animation {
   from: number;
@@ -68,13 +98,17 @@ interface Animation {
   resolve: () => void;
 }
 
-/** Velocity decay per second while coasting after a flick. */
-const FRICTION = 6;
-/** Spring constant pulling a resting carousel onto the nearest cover. */
-const SNAP = 14;
 const MAX_VELOCITY = 26;
-/** Below this (covers/sec) coasting gives way to snapping. */
-const COAST_FLOOR = 0.35;
+/**
+ * Seeks shorter than this are sprung straight onto; longer ones are thrown so
+ * that they coast to rest on the target, the way a hand would do it.
+ */
+const SPRING_REACH = 2;
+/** A seek further than this jumps most of the way first. */
+const MAX_GLIDE = 40;
+/** Sway this small, this slow, is invisible; stop simulating it. */
+const SWAY_REST_DEGREES = 0.05;
+const SWAY_REST_SPEED = 0.5;
 const CLICK_SLOP_PX = 6;
 const MAX_BLUR_PX = 3.5;
 /** A cover this close to the centre is worth loading full-size art for. */
@@ -87,8 +121,12 @@ export class CoverFlowEngine {
   private readonly options: EngineOptions;
   private readonly slots: SlotState[];
 
-  private position = 0;
-  private velocity = 0;
+  private readonly body: Body = { position: 0, velocity: 0 };
+  /** Where the carousel is headed: the finger, or the cover it will rest on. */
+  private target = 0;
+  private mode: Mode = "settle";
+  /** onSettle has already been told about the current resting place. */
+  private settleReported = true;
   private dragging = false;
   private animation: Animation | null = null;
   private running = false;
@@ -103,9 +141,8 @@ export class CoverFlowEngine {
   // Drag bookkeeping.
   private pointerId: number | null = null;
   private startX = 0;
-  private startPosition = 0;
+  private startTarget = 0;
   private lastX = 0;
-  private lastMoveAt = 0;
   private travelled = 0;
   /**
    * Which cover the press landed on. Recorded at pointerdown because
@@ -129,6 +166,7 @@ export class CoverFlowEngine {
       lastZIndex: "",
       lastFilter: "",
       lastDisplay: "",
+      sway: { position: 0, velocity: 0 },
     }));
 
     this.motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -196,7 +234,7 @@ export class CoverFlowEngine {
     const count = this.count;
     if (!count) return;
 
-    const plan = planSpin(this.position, index, count, this.reducedMotion);
+    const plan = planSpin(this.body.position, index, count, this.reducedMotion);
     await this.animateTo(
       plan.to,
       plan.durationMs,
@@ -213,25 +251,46 @@ export class CoverFlowEngine {
     const count = this.count;
     if (!count) return;
 
-    const to = this.position + shortestDelta(this.position, index, count);
+    const to = this.body.position + shortestDelta(this.body.position, index, count);
 
     if (!animate || this.reducedMotion) {
       this.cancelAnimation();
-      this.position = to;
-      this.velocity = 0;
+      this.body.position = this.target = to;
+      this.body.velocity = 0;
+      this.mode = "settle";
+      for (const slot of this.slots) slot.sway.position = slot.sway.velocity = 0;
       this.paint();
       this.centre = wrapIndex(Math.round(to), count);
+      this.settleReported = true;
       this.options.onSettle(this.centre);
       return;
     }
-    void this.animateTo(to, 480, easeOutQuint, false);
+    this.seek(Math.round(to));
   }
 
   step(delta: number): void {
+    // Presses stack: a second arrow mid-move heads one further on from where
+    // the first was going, not from wherever the carousel happens to be.
+    const from = this.dragging ? this.body.position : this.target;
+    this.seek(Math.round(from) + delta);
+  }
+
+  /** Sends the carousel to rest on `to`, sprung or thrown depending on range. */
+  private seek(to: number): void {
     this.cancelAnimation();
-    this.velocity = 0;
-    this.position = Math.round(this.position) + delta;
-    this.start();
+    this.target = to;
+
+    const distance = to - this.body.position;
+    if (this.reducedMotion || Math.abs(distance) <= SPRING_REACH) {
+      this.mode = "settle";
+    } else {
+      if (Math.abs(distance) > MAX_GLIDE) {
+        this.body.position = to - Math.sign(distance) * MAX_GLIDE;
+      }
+      this.body.velocity = glideVelocity(this.body.position, to, FRICTION);
+      this.mode = "coast";
+    }
+    this.wake();
   }
 
   // -------------------------------------------------------------------------
@@ -321,8 +380,8 @@ export class CoverFlowEngine {
       }
       this.write(slot, "lastDisplay", "display", "");
 
-      const slotPos = slotPosition(index, this.position, activeSlots);
-      const distance = slotPos - this.position;
+      const slotPos = slotPosition(index, this.body.position, activeSlots);
+      const distance = slotPos - this.body.position;
       const albumIndex = wrapIndex(slotPos, count);
 
       if (slot.albumIndex !== albumIndex || this.stale) {
@@ -335,7 +394,8 @@ export class CoverFlowEngine {
         "lastTransform",
         "transform",
         `translate3d(${(geometry.x * 100).toFixed(3)}%, 0, ${geometry.z.toFixed(2)}px)` +
-          ` rotateY(${geometry.rotate.toFixed(2)}deg) scale(${geometry.scale.toFixed(4)})`,
+          ` rotateY(${(geometry.rotate + slot.sway.position).toFixed(2)}deg)` +
+          ` scale(${geometry.scale.toFixed(4)})`,
       );
       this.write(slot, "lastOpacity", "opacity", geometry.opacity.toFixed(3));
       this.write(slot, "lastZIndex", "zIndex", String(geometry.zIndex));
@@ -358,7 +418,7 @@ export class CoverFlowEngine {
 
     this.stale = false;
 
-    const centre = wrapIndex(Math.round(this.position), count);
+    const centre = wrapIndex(Math.round(this.body.position), count);
     if (centre !== this.centre) {
       this.centre = centre;
       this.options.onCaption(centre);
@@ -368,6 +428,12 @@ export class CoverFlowEngine {
   // -------------------------------------------------------------------------
   // Motion loop
   // -------------------------------------------------------------------------
+
+  /** Something moved the carousel: run the loop and report where it lands. */
+  private wake(): void {
+    this.settleReported = false;
+    this.start();
+  }
 
   private start(): void {
     if (this.running || this.destroyed) return;
@@ -388,60 +454,119 @@ export class CoverFlowEngine {
       return;
     }
 
+    const body = this.body;
     let blur = 0;
-    let atRest = false;
 
-    if (this.animation) {
-      const animation = this.animation;
-      const t = clamp((now - animation.startedAt) / animation.durationMs, 0, 1);
-      const previous = this.position;
+    switch (this.mode) {
+      case "animation": {
+        const animation = this.animation;
+        if (!animation) {
+          this.mode = "settle";
+          break;
+        }
+        const t = clamp((now - animation.startedAt) / animation.durationMs, 0, 1);
+        const previous = body.position;
 
-      this.position =
-        animation.from + (animation.to - animation.from) * animation.ease(t);
+        body.position =
+          animation.from + (animation.to - animation.from) * animation.ease(t);
+        // Not simulated, but the covers still swing to it.
+        body.velocity = delta ? (body.position - previous) / delta : 0;
 
-      if (animation.blur) {
-        const speed = Math.abs(this.position - previous) / (delta || 1);
-        blur = clamp(speed * 0.05, 0, MAX_BLUR_PX);
+        if (animation.blur) {
+          blur = clamp(Math.abs(body.velocity) * 0.05, 0, MAX_BLUR_PX);
+        }
+
+        if (t >= 1) {
+          body.position = this.target = animation.to;
+          body.velocity = 0;
+          this.animation = null;
+          this.mode = "settle";
+          animation.resolve();
+        }
+        break;
       }
-
-      if (t >= 1) {
-        this.position = animation.to;
-        this.animation = null;
-        this.velocity = 0;
-        atRest = true;
-        animation.resolve();
-      }
-    } else if (this.dragging) {
-      // Position is driven directly by pointermove.
-    } else if (Math.abs(this.velocity) > COAST_FLOOR) {
-      this.position += this.velocity * delta;
-      this.velocity *= Math.exp(-FRICTION * delta);
-    } else {
-      this.velocity = 0;
-      const target = Math.round(this.position);
-      const gap = target - this.position;
-
-      if (Math.abs(gap) > 0.0008) {
-        this.position += gap * (1 - Math.exp(-SNAP * delta));
-      } else {
-        this.position = target;
-        atRest = true;
-      }
+      case "follow":
+        stepSpring(body, this.target, FOLLOW_SPRING, delta);
+        break;
+      case "coast":
+        coast(body, FRICTION, delta);
+        if (Math.abs(body.velocity) < HANDOFF_SPEED) {
+          // Slow enough to catch: aim for whichever cover it was going to
+          // drift to, so the spring finishes the throw rather than fighting it.
+          this.target = Math.round(restingPoint(body, FRICTION));
+          this.mode = "settle";
+        }
+        break;
+      case "settle":
+        stepSpring(
+          body,
+          this.target,
+          this.reducedMotion ? SETTLE_SPRING_CALM : SETTLE_SPRING,
+          delta,
+        );
+        if (isAtRest(body, this.target)) {
+          body.position = this.target;
+          body.velocity = 0;
+        }
+        break;
     }
 
+    const swaying = this.swing(delta);
     this.paint(blur);
 
-    if (atRest) {
-      this.running = false;
+    const still =
+      this.mode === "settle" &&
+      body.position === this.target &&
+      body.velocity === 0;
+
+    if (still && !this.settleReported) {
+      this.settleReported = true;
       this.options.onSettle(this.centreIndex);
+    }
+
+    if (still && !swaying) {
+      this.running = false;
     } else {
       requestAnimationFrame(this.frame);
     }
   };
 
+  /**
+   * Lets each cover lean into the carousel's speed on its own spring. Returns
+   * whether any of them is still visibly moving.
+   */
+  private swing(delta: number): boolean {
+    const activeSlots = Math.min(SLOT_COUNT, this.count);
+    let moving = false;
+
+    for (let index = 0; index < activeSlots; index++) {
+      const sway = this.slots[index].sway;
+
+      if (this.reducedMotion) {
+        sway.position = sway.velocity = 0;
+        continue;
+      }
+
+      const distance =
+        slotPosition(index, this.body.position, activeSlots) - this.body.position;
+      stepSpring(sway, leanFor(this.body.velocity), swaySpring(distance), delta);
+
+      if (
+        Math.abs(sway.position) > SWAY_REST_DEGREES ||
+        Math.abs(sway.velocity) > SWAY_REST_SPEED
+      ) {
+        moving = true;
+      } else if (this.body.velocity === 0) {
+        sway.position = sway.velocity = 0;
+      }
+    }
+    return moving;
+  }
+
   private cancelAnimation(): void {
     this.animation?.resolve();
     this.animation = null;
+    if (this.mode === "animation") this.mode = "settle";
   }
 
   private animateTo(
@@ -451,11 +576,12 @@ export class CoverFlowEngine {
     blur: boolean,
   ): Promise<void> {
     this.cancelAnimation();
-    this.velocity = 0;
+    this.body.velocity = 0;
 
     return new Promise<void>((resolve) => {
+      this.mode = "animation";
       this.animation = {
-        from: this.position,
+        from: this.body.position,
         to,
         startedAt: performance.now(),
         durationMs: Math.max(durationMs, 1),
@@ -463,7 +589,7 @@ export class CoverFlowEngine {
         blur,
         resolve,
       };
-      this.start();
+      this.wake();
     });
   }
 
@@ -487,36 +613,27 @@ export class CoverFlowEngine {
     this.pointerId = event.pointerId;
     this.options.stage.setPointerCapture(event.pointerId);
     this.cancelAnimation();
+    this.clearWheel();
 
+    // Keep whatever momentum it has: catching a moving carousel should feel
+    // like grabbing something heavy, not like it was never moving.
     this.dragging = true;
-    this.velocity = 0;
+    this.mode = "follow";
+    this.target = this.startTarget = this.body.position;
     this.startX = this.lastX = event.clientX;
-    this.startPosition = this.position;
-    this.lastMoveAt = performance.now();
     this.travelled = 0;
     this.options.stage.classList.add(this.options.draggingClass);
-    this.start();
+    this.wake();
   };
 
   private onPointerMove = (event: PointerEvent): void => {
     if (this.pointerId !== event.pointerId || !this.dragging) return;
 
-    const now = performance.now();
-    const dt = Math.max((now - this.lastMoveAt) / 1000, 0.001);
-    const dx = event.clientX - this.lastX;
-
-    this.travelled += Math.abs(dx);
-    this.position =
-      this.startPosition - (event.clientX - this.startX) / this.pxPerCover;
-    this.velocity = clamp(
-      -dx / this.pxPerCover / dt,
-      -MAX_VELOCITY,
-      MAX_VELOCITY,
-    );
-
+    this.travelled += Math.abs(event.clientX - this.lastX);
     this.lastX = event.clientX;
-    this.lastMoveAt = now;
-    this.start();
+    this.target =
+      this.startTarget - (event.clientX - this.startX) / this.pxPerCover;
+    this.wake();
   };
 
   private onPointerUp = (event: PointerEvent): void => {
@@ -531,8 +648,10 @@ export class CoverFlowEngine {
     this.pressedIndex = null;
 
     if (this.travelled < CLICK_SLOP_PX && pressed !== null) {
-      this.velocity = 0;
       if (pressed === this.centre) {
+        this.target = Math.round(this.body.position);
+        this.mode = "settle";
+        this.wake();
         this.options.onSelect(pressed);
       } else {
         this.goTo(pressed);
@@ -540,15 +659,25 @@ export class CoverFlowEngine {
       return;
     }
 
-    // Releasing after a pause shouldn't fling.
-    if (performance.now() - this.lastMoveAt > 120) this.velocity = 0;
-    this.start();
+    // Let go: it carries on at the speed the spring was dragging it. A finger
+    // that stopped before lifting has already stopped the carousel with it,
+    // so there is no stale flick to discard.
+    this.body.velocity = clamp(this.body.velocity, -MAX_VELOCITY, MAX_VELOCITY);
+    this.mode = "coast";
+    this.wake();
   };
 
+  private clearWheel(): void {
+    if (this.wheelSettle) clearTimeout(this.wheelSettle);
+    this.wheelSettle = null;
+  }
+
   // Trackpads send deltaX; a plain mouse wheel only sends deltaY, so both move
-  // the carousel.
+  // the carousel. The wheel tows the carousel the same way a finger does, which
+  // turns a notched mouse wheel's jumps into a push, and lets it coast when the
+  // gesture ends.
   private onWheel = (event: WheelEvent): void => {
-    if (!this.count) return;
+    if (!this.count || this.dragging) return;
     event.preventDefault();
     this.cancelAnimation();
 
@@ -557,13 +686,20 @@ export class CoverFlowEngine {
         ? event.deltaX
         : event.deltaY;
 
-    this.position += delta / (this.pxPerCover * 1.6);
-    this.velocity = 0;
-    this.paint();
+    if (this.mode !== "follow") this.target = this.body.position;
+    this.mode = "follow";
+    this.target += delta / (this.pxPerCover * 1.6);
+    this.wake();
 
-    // Snap once the gesture stops rather than after every notch.
-    if (this.wheelSettle) clearTimeout(this.wheelSettle);
-    this.wheelSettle = setTimeout(() => this.start(), 90);
+    // Release once the gesture stops rather than after every notch.
+    this.clearWheel();
+    this.wheelSettle = setTimeout(() => {
+      this.wheelSettle = null;
+      if (this.mode !== "follow" || this.dragging) return;
+      this.body.velocity = clamp(this.body.velocity, -MAX_VELOCITY, MAX_VELOCITY);
+      this.mode = "coast";
+      this.wake();
+    }, 90);
   };
 
   private onKeyDown = (event: KeyboardEvent): void => {
