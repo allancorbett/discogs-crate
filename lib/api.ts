@@ -1,4 +1,5 @@
 import {
+  AnonymousStrategy,
   clearSession,
   getAuthStrategy,
   getSessionUsername,
@@ -92,6 +93,47 @@ export async function withAuth(
       if (error.status === 401 || error.status === 403) {
         await clearSession();
         return jsonError("Your Discogs token is no longer valid.", 401);
+      }
+      console.error("Discogs request failed", error.status, error.message);
+      return jsonError(upstreamMessage(error.status), error.status);
+    }
+    console.error("Unexpected Discogs failure", error);
+    return jsonError("Could not reach Discogs. Try again.", 502);
+  }
+}
+
+/**
+ * The credential for reading someone else's *public* collection, for the
+ * shareable shop links.
+ *
+ * A visitor signed in with their own account may spend their own budget on
+ * it, exactly as they could by asking Discogs directly. The demo credential is
+ * the deployment's, and — for the reason `resolveUsername` spells out — must
+ * never be aimed at an account the visitor chose, so a demo session reads as
+ * anonymous here even if it also carries a token.
+ */
+export async function visitorStrategy(): Promise<AuthStrategy> {
+  if (await isDemoSession()) return new AnonymousStrategy();
+  return (await getAuthStrategy()) ?? new AnonymousStrategy();
+}
+
+/**
+ * Error mapping for routes that read public data. Unlike `withAuth`, a 401 or
+ * 403 here says nothing about the visitor's session — it is Discogs refusing
+ * to show a private collection — so nobody gets signed out over it.
+ */
+export async function withPublicDiscogs(
+  handler: () => Promise<Response>,
+): Promise<Response> {
+  try {
+    return await handler();
+  } catch (error) {
+    if (error instanceof DiscogsApiError) {
+      if (error.status === 401 || error.status === 403) {
+        return jsonError("That collection is private on Discogs.", 403);
+      }
+      if (error.status === 404) {
+        return jsonError("There's no Discogs user by that name.", 404);
       }
       console.error("Discogs request failed", error.status, error.message);
       return jsonError(upstreamMessage(error.status), error.status);

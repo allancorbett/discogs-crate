@@ -3,35 +3,12 @@
 import { useEffect, useRef } from "react";
 import { useRelease } from "@/hooks/useRelease";
 import type { Album } from "@/lib/discogs/types";
+import { listenLinks } from "@/lib/listen";
 import styles from "./AlbumDetail.module.css";
 
 interface Props {
   album: Album;
   onClose: () => void;
-}
-
-/** Key-free search links — no streaming API credentials needed. */
-function listenLinks(album: Album) {
-  const query = `${album.artist} ${album.title}`;
-  return [
-    {
-      label: "Spotify",
-      href: `https://open.spotify.com/search/${encodeURIComponent(query)}`,
-    },
-    {
-      label: "Apple Music",
-      href: `https://music.apple.com/search?term=${encodeURIComponent(query)}`,
-    },
-    {
-      label: "Qobuz",
-      // Qobuz store routes are locale-prefixed; a bare /search 404s.
-      href: `https://www.qobuz.com/gb-en/search?q=${encodeURIComponent(query)}`,
-    },
-    {
-      label: "YouTube",
-      href: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
-    },
-  ];
 }
 
 export function AlbumDetail({ album, onClose }: Props) {
@@ -166,7 +143,7 @@ export function AlbumDetail({ album, onClose }: Props) {
 
             {listenLinks(album).map((link) => (
               <a
-                key={link.label}
+                key={link.id}
                 className="pill"
                 href={link.href}
                 target="_blank"

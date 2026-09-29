@@ -80,13 +80,18 @@ export async function discogsFetch<T>(
   const url = buildUrl(path, options.searchParams);
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      "User-Agent": userAgent(),
+    };
+    // An anonymous request sends no Authorization at all rather than an empty
+    // one, which Discogs would treat as a malformed credential.
+    const authorization = await auth.authHeader(method, url);
+    if (authorization) headers.Authorization = authorization;
+
     const response = await fetch(url, {
       method,
-      headers: {
-        Accept: "application/json",
-        "User-Agent": userAgent(),
-        Authorization: await auth.authHeader(method, url),
-      },
+      headers,
       cache: "no-store",
     });
 
