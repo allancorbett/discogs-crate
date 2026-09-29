@@ -13,12 +13,13 @@ import {
   type ListenService,
 } from "@/lib/listen";
 import { Ambience } from "@/lib/shop/ambience";
-import { digStance, layoutShop, type PlacedCrate } from "@/lib/shop/layout";
-import { findPath } from "@/lib/shop/path";
+import { layoutShop, type PlacedCrate } from "@/lib/shop/layout";
 import { shopPath } from "@/lib/shop/share";
-import { Joystick } from "./Joystick";
+import { STICK_RANGE } from "@/lib/shop/stick";
+import { isTouchDevice, type Aim, type Controls } from "./controls";
+import { describe, type Interaction } from "./interact";
 import { makePostcard, sharePostcard } from "./postcard";
-import { createRig, type Rig } from "./rig";
+import { restoreRig, saveRig, type Rig } from "./rig";
 import { ShopScene, type SceneHandle } from "./scene/ShopScene";
 import styles from "./Shop.module.css";
 
@@ -39,9 +40,6 @@ function readMuted(): boolean {
   }
 }
 
-/** Beyond this, tapping a crate walks you over to it first. */
-const REACH = 2.6;
-
 interface Held {
   album: Album;
   crateId: string;
@@ -51,7 +49,8 @@ interface Held {
 /**
  * The record shop: the scene, and everything you can do in it. Discrete state
  * — which crate you are in, what you are holding, what is playing — lives
- * here; the per-frame state of your body is in the rig.
+ * here; the per-frame state of your body is in the rig, steered by the
+ * musicmaze-style controls.
  */
 export default function ShopExperience({ albums, username, visiting = false }: ShopExperienceProps) {
   const layout = useMemo(() => layoutShop(albums), [albums]);
@@ -60,12 +59,16 @@ export default function ShopExperience({ albums, username, visiting = false }: S
     [layout.crates],
   );
 
-  const rig = useRef<Rig>(createRig(layout.spawn));
+  const [initialRig] = useState(() => restoreRig(username, layout));
+  const rig = useRef<Rig>(initialRig);
   const scene = useRef<SceneHandle | null>(null);
+  const controls = useRef<Controls | null>(null);
+  const stage = useRef<HTMLDivElement>(null);
   const [registry] = useState(() => new Map<number, THREE.Object3D>());
   const [ambience] = useState(() => new Ambience());
 
   const [entered, setEntered] = useState(false);
+  const [locked, setLocked] = useState(false);
   const [digging, setDigging] = useState<{ crateId: string; index: number } | null>(null);
   const [held, setHeld] = useState<Held | null>(null);
   const [playing, setPlaying] = useState<{ album: Album; crateId: string } | null>(null);
@@ -74,13 +77,26 @@ export default function ShopExperience({ albums, username, visiting = false }: S
   const [toast, setToast] = useState<{ text: string; href?: string } | null>(null);
   const [info, setInfo] = useState<Album | null>(null);
   const [touch, setTouch] = useState(false);
+  const [aimed, setAimed] = useState<Interaction | null>(null);
+  const [petted, setPetted] = useState(0);
+  const [stick, setStick] = useState<{ x: number; y: number; vector: Aim } | null>(null);
 
-  // Preferences only exist in the browser, so they are read after mount.
+  /** Where the floating thumb stick is, relative to the stage, for drawing it. */
+  const showStick = useCallback((next: { origin: Aim; vector: Aim } | null) => {
+    const rect = stage.current?.getBoundingClientRect();
+    setStick(
+      next && rect
+        ? { x: next.origin.x - rect.left, y: next.origin.y - rect.top, vector: next.vector }
+        : null,
+    );
+  }, []);
+
+  // Preferences and the kind of device only exist in the browser.
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect */
     setService(readListenService());
     setMuted(readMuted());
-    setTouch(window.matchMedia("(pointer: coarse)").matches);
+    setTouch(isTouchDevice());
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
@@ -92,6 +108,18 @@ export default function ShopExperience({ albums, username, visiting = false }: S
     const timer = setTimeout(() => setToast(null), toast.href ? 7000 : 2600);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  // Remember where you were standing, as musicmaze does.
+  useEffect(() => {
+    const save = () => saveRig(username, rig.current);
+    const timer = setInterval(save, 2000);
+    window.addEventListener("pagehide", save);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("pagehide", save);
+      save();
+    };
+  }, [username]);
 
   const away = useMemo(() => {
     const ids = new Set<number>();
@@ -105,32 +133,17 @@ export default function ShopExperience({ albums, username, visiting = false }: S
     [away],
   );
 
-  const dugCrate = digging ? crateById.get(digging.crateId) ?? null : null;
+  const dugCrate = digging ? (crateById.get(digging.crateId) ?? null) : null;
 
   // --- Actions -------------------------------------------------------------
 
-  /** Sets off walking somewhere, round the bins. */
-  const walk = useCallback(
-    (
-      to: { x: number; z: number },
-      extras: { then?: () => void; face?: { yaw: number; pitch: number } } = {},
-    ) => {
-      const r = rig.current;
-      r.facing = null;
-      r.walkTo = { path: findPath(layout, r, to) ?? [to], ...extras };
-    },
-    [layout],
-  );
-
   const leaveCrate = useCallback(() => {
-    if (rig.current.digging) rig.current.pitch = -0.3;
     rig.current.digging = null;
     setDigging(null);
   }, []);
 
   const startDig = useCallback(
     (crate: PlacedCrate) => {
-      rig.current.walkTo = null;
       rig.current.digging = crate;
       setDigging({ crateId: crate.id, index: 0 });
       ambience.flick();
@@ -152,26 +165,17 @@ export default function ShopExperience({ albums, username, visiting = false }: S
     [digging, dugCrate, crateAlbums, ambience],
   );
 
-  const tapCrate = useCallback(
+  const digOrFlip = useCallback(
     (crate: PlacedCrate) => {
-      ambience.start();
       if (digging?.crateId === crate.id) {
         flip(1);
         return;
       }
       // Hands full: the record you were carrying goes back where it came from.
       setHeld(null);
-
-      const stance = digStance(crate);
-      const distance = Math.hypot(stance.x - rig.current.x, stance.z - rig.current.z);
-      if (digging || distance <= REACH) {
-        startDig(crate);
-      } else {
-        leaveCrate();
-        walk(stance, { then: () => startDig(crate) });
-      }
+      startDig(crate);
     },
-    [ambience, digging, flip, startDig, leaveCrate, walk],
+    [digging, flip, startDig],
   );
 
   const pullOut = useCallback(() => {
@@ -185,8 +189,7 @@ export default function ShopExperience({ albums, username, visiting = false }: S
 
   const putBack = useCallback(() => setHeld(null), []);
 
-  const tapDeck = useCallback(() => {
-    ambience.start();
+  const playOrLift = useCallback(() => {
     if (held) {
       // Straight from the click, so the browser treats it as the user's.
       const url = listenUrl(held.album, service);
@@ -213,44 +216,42 @@ export default function ShopExperience({ albums, username, visiting = false }: S
     setToast({ text: "Pull a record out of a crate first, then bring it here." });
   }, [ambience, held, playing, service]);
 
-  const walkToDeck = useCallback(() => {
-    leaveCrate();
-    const x = layout.turntable.x - 0.35;
-    const z = layout.turntable.z + layout.counter.depth / 2 + 0.6;
-    walk(
-      { x, z },
-      {
-        // Turn to the deck and look down at it on arrival.
-        face: {
-          yaw: Math.atan2(-(layout.turntable.x - x), -(layout.turntable.z - z)),
-          pitch: -0.62,
-        },
-      },
-    );
-  }, [layout, leaveCrate, walk]);
-
-  const tapFloor = useCallback(
-    (point: { x: number; z: number }) => {
-      ambience.start();
-      if (digging) {
-        leaveCrate();
-        return;
-      }
-      walk(point);
-    },
-    [ambience, digging, leaveCrate, walk],
-  );
-
   const pet = useCallback(() => {
-    ambience.start();
     ambience.purr();
+    setPetted((n) => n + 1);
     setToast({ text: "Prrrrr." });
   }, [ambience]);
+
+  /** A click with the pointer locked, or a tap: use whatever is under it. */
+  const fire = useCallback(
+    (aim: Aim) => {
+      ambience.start();
+      const target = scene.current?.pick(aim) ?? null;
+      if (!target) return;
+      if (target.kind === "crate") digOrFlip(target.crate);
+      else if (target.kind === "deck") playOrLift();
+      else pet();
+    },
+    [ambience, digOrFlip, playOrLift, pet],
+  );
 
   const enter = () => {
     ambience.start();
     ambience.bell();
     setEntered(true);
+    controls.current?.requestLock();
+  };
+
+  const resume = () => controls.current?.requestLock();
+
+  const showDetails = (album: Album) => {
+    controls.current?.releaseLock();
+    setInfo(album);
+  };
+
+  const closeDetails = () => {
+    setInfo(null);
+    controls.current?.requestLock();
   };
 
   const chooseService = (value: string) => {
@@ -312,126 +313,30 @@ export default function ShopExperience({ albums, username, visiting = false }: S
     if (result === "saved") setToast({ text: "Snapshot saved." });
   };
 
-  // --- Keyboard --------------------------------------------------------------
-
-  const turning = useRef(0);
+  // --- Keys that aren't walking ---------------------------------------------
 
   useEffect(() => {
     if (!entered) return;
-    const keys = new Set<string>();
-    const typing = (event: KeyboardEvent) =>
-      event.target instanceof HTMLElement &&
-      /^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName);
-
-    const sync = () => {
-      const input = rig.current.input;
-      input.forward =
-        (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
-        (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
-      input.strafe =
-        (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
-      // Arrows turn rather than strafe, which is kinder to one-handed walking.
-      const turn = (keys.has("ArrowLeft") ? 1 : 0) - (keys.has("ArrowRight") ? 1 : 0);
-      turning.current = turn;
-    };
-
     const down = (event: KeyboardEvent) => {
-      if (typing(event) || info) return;
+      const target = event.target as HTMLElement | null;
+      if (info || target?.closest?.("input, textarea, select")) return;
+      if (event.repeat && event.code !== "Space" && !event.code.startsWith("Arrow")) return;
+
       if (rig.current.digging) {
-        if (event.code === "ArrowRight" || event.code === "Space" || event.code === "KeyD") {
-          event.preventDefault();
-          flip(1);
-        } else if (event.code === "ArrowLeft" || event.code === "KeyA") {
-          flip(-1);
-        } else if (event.code === "Enter" || event.code === "KeyE" || event.code === "ArrowUp") {
-          event.preventDefault();
-          pullOut();
-        } else if (event.code === "Escape" || event.code === "ArrowDown" || event.code === "KeyS") {
-          leaveCrate();
-        }
+        if (["Space", "ArrowRight", "KeyD"].includes(event.code)) flip(1);
+        else if (["ArrowLeft", "KeyA"].includes(event.code)) flip(-1);
+        else if (["KeyE", "ArrowUp", "Enter", "KeyW"].includes(event.code)) pullOut();
+        else if (["KeyS", "ArrowDown", "KeyQ", "Escape"].includes(event.code)) leaveCrate();
+        else return;
+        event.preventDefault();
         return;
       }
-      if (event.code === "Escape" && held) putBack();
-      if (event.code.startsWith("Arrow") || event.code === "Space") event.preventDefault();
-      keys.add(event.code);
-      sync();
+      if (event.code === "KeyR" && held) putBack();
+      else if (event.code === "KeyI" && held && !visiting) showDetails(held.album);
     };
-    const up = (event: KeyboardEvent) => {
-      keys.delete(event.code);
-      sync();
-    };
-    const blur = () => {
-      keys.clear();
-      sync();
-    };
-
     window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
-    window.addEventListener("blur", blur);
-    return () => {
-      window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
-      window.removeEventListener("blur", blur);
-      keys.clear();
-      sync();
-    };
-  }, [entered, info, flip, pullOut, leaveCrate, held, putBack]);
-
-  // Keyboard turning runs on its own clock so it is smooth, not key-repeat.
-  useEffect(() => {
-    let frame = 0;
-    let last = performance.now();
-    const tick = (now: number) => {
-      const delta = Math.min(0.05, (now - last) / 1000);
-      last = now;
-      if (turning.current && !rig.current.digging) {
-        rig.current.yaw += turning.current * delta * 1.8;
-      }
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
-  // --- Looking around, and swiping in a crate --------------------------------
-
-  const drag = useRef<{ id: number; x: number; y: number; startX: number; startY: number } | null>(
-    null,
-  );
-
-  const onPointerDown = (event: React.PointerEvent) => {
-    if (event.button !== 0 && event.pointerType === "mouse") return;
-    drag.current = {
-      id: event.pointerId,
-      x: event.clientX,
-      y: event.clientY,
-      startX: event.clientX,
-      startY: event.clientY,
-    };
-  };
-
-  const onPointerMove = (event: React.PointerEvent) => {
-    const d = drag.current;
-    if (!d || d.id !== event.pointerId) return;
-    const dx = event.clientX - d.x;
-    const dy = event.clientY - d.y;
-    d.x = event.clientX;
-    d.y = event.clientY;
-    if (rig.current.digging) return;
-    const r = rig.current;
-    r.yaw += dx * 0.0042;
-    r.pitch = Math.max(-1.1, Math.min(0.8, r.pitch + dy * 0.0036));
-  };
-
-  const onPointerUp = (event: React.PointerEvent) => {
-    const d = drag.current;
-    drag.current = null;
-    if (!d || d.id !== event.pointerId || !rig.current.digging) return;
-    const dx = event.clientX - d.startX;
-    const dy = event.clientY - d.startY;
-    if (-dy > 60 && -dy > Math.abs(dx)) pullOut();
-    else if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) flip(dx < 0 ? 1 : -1);
-  };
+    return () => window.removeEventListener("keydown", down);
+  });
 
   // --- What to show ----------------------------------------------------------
 
@@ -440,25 +345,37 @@ export default function ShopExperience({ albums, username, visiting = false }: S
   const serviceLabel = LISTEN_SERVICES.find((s) => s.id === service)?.label ?? "Spotify";
 
   const posters = useMemo(() => {
-    // The first record of each of the four biggest genres, framed.
-    const biggest = [...genreCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
-    return biggest
-      .map(([genre]) => layout.crates.find((c) => c.genre === genre)?.albums.find((a) => a.coverImage))
-      .filter((album): album is Album => Boolean(album));
+    // The first sleeve of each of the biggest genres: two framed on the wall,
+    // the rest face-out on the record shelves as staff picks.
+    const byGenre = [...genreCounts.entries()].sort((a, b) => b[1] - a[1]).map(([g]) => g);
+    const picks: Album[] = [];
+    for (let round = 0; round < 5 && picks.length < 8; round++) {
+      for (const genre of byGenre) {
+        const album = layout.crates
+          .filter((c) => c.genre === genre)
+          .flatMap((c) => c.albums)
+          .filter((a) => a.coverImage && !picks.includes(a))[round];
+        if (album) picks.push(album);
+        if (picks.length >= 8) break;
+      }
+    }
+    return picks;
   }, [genreCounts, layout.crates]);
 
+  const verb = (() => {
+    if (!aimed) return null;
+    if (aimed.kind === "cat") return "Stroke";
+    if (aimed.kind === "deck") return held ? "Put it on" : playing ? "Take it off" : null;
+    return digging?.crateId === aimed.crate.id ? "Flick" : "Dig";
+  })();
+
   return (
-    <div
-      className={styles.stage}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={() => (drag.current = null)}
-    >
+    <div className={styles.stage} ref={stage}>
       <ShopScene
         layout={layout}
         username={username}
         rig={rig}
+        start={{ x: initialRig.x, z: initialRig.z }}
         posters={posters}
         digging={dugCrate && digging ? { crate: dugCrate, index: digging.index } : null}
         held={held}
@@ -466,11 +383,35 @@ export default function ShopExperience({ albums, username, visiting = false }: S
         away={away}
         registry={registry}
         handleRef={scene}
-        onCrateTap={tapCrate}
-        onDeckTap={tapDeck}
-        onFloorTap={tapFloor}
-        onPet={pet}
+        controlsRef={controls}
+        touch={touch}
+        petted={petted}
+        onFire={fire}
+        onLockChange={setLocked}
+        onStick={showStick}
+        onAim={setAimed}
       />
+
+      {entered && !touch ? (
+        <div className={styles.crosshair} data-active={aimed !== null} aria-hidden="true">
+          <span />
+          {aimed ? (
+            <p className={styles.aimLabel}>
+              {verb ? <kbd>{verb}</kbd> : null} {describe(aimed)}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {stick ? (
+        <div className={styles.stick} style={{ left: stick.x, top: stick.y }} aria-hidden="true">
+          <span
+            style={{
+              transform: `translate(${stick.vector.x * STICK_RANGE}px, ${stick.vector.y * STICK_RANGE}px)`,
+            }}
+          />
+        </div>
+      ) : null}
 
       {!entered ? (
         <div className={styles.welcome}>
@@ -479,19 +420,28 @@ export default function ShopExperience({ albums, username, visiting = false }: S
             <h2 className={styles.shopName}>{username}&rsquo;s Records</h2>
             <p className={styles.welcomeText}>
               {albums.length.toLocaleString()} records in {layout.crates.length.toLocaleString()}{" "}
-              crates across {genreCounts.size} {genreCounts.size === 1 ? "genre" : "genres"}. Tap a
-              crate to dig, pull one out, and drop it on the turntable in the back corner to play
-              it.
+              crates across {genreCounts.size} {genreCounts.size === 1 ? "genre" : "genres"}. Dig
+              through a crate, pull one out, and put it on the turntable in the back corner to
+              play it.
             </p>
             <button type="button" className={styles.enter} onClick={enter} autoFocus>
-              Step inside
+              {touch ? "Tap to step inside" : "Click to step inside"}
             </button>
             <p className={styles.small}>
               {touch
-                ? "Stick to walk · drag to look · tap the floor to walk there"
-                : "WASD to walk · drag to look · click the floor to walk there"}
+                ? "Left thumb to walk · drag to look · tap to use"
+                : "WASD to walk · mouse to look · Shift to hurry · click to use · Esc to pause"}
             </p>
           </div>
+        </div>
+      ) : null}
+
+      {entered && !touch && !locked && !info ? (
+        <div className={styles.paused}>
+          <button type="button" className={styles.pausedCard} onClick={resume}>
+            <span className={styles.kicker}>Paused</span>
+            <span className={styles.pausedText}>Click to carry on browsing</span>
+          </button>
         </div>
       ) : null}
 
@@ -542,24 +492,26 @@ export default function ShopExperience({ albums, username, visiting = false }: S
               ) : (
                 <p className={styles.record}>This crate is empty.</p>
               )}
-              <div className={styles.actions}>
-                <button type="button" className="pill" onClick={() => flip(-1)} aria-label="Previous record">
-                  ‹
-                </button>
-                <button type="button" className="pill" data-active="true" onClick={pullOut} disabled={!upNow}>
-                  Pull it out
-                </button>
-                <button type="button" className="pill" onClick={() => flip(1)} aria-label="Next record">
-                  ›
-                </button>
-                <button type="button" className="pill" onClick={leaveCrate}>
-                  Step back
-                </button>
-              </div>
+              {touch || !locked ? (
+                <div className={styles.actions}>
+                  <button type="button" className="pill" onClick={() => flip(-1)} aria-label="Previous record">
+                    ‹
+                  </button>
+                  <button type="button" className="pill" data-active="true" onClick={pullOut} disabled={!upNow}>
+                    Pull it out
+                  </button>
+                  <button type="button" className="pill" onClick={() => flip(1)} aria-label="Next record">
+                    ›
+                  </button>
+                  <button type="button" className="pill" onClick={leaveCrate}>
+                    Step back
+                  </button>
+                </div>
+              ) : null}
               <p className={styles.small}>
                 {touch
-                  ? "Tap the crate to flick · swipe up to pull one out"
-                  : "Click or → to flick · ↑ or Enter to pull out · Esc to step back"}
+                  ? "Tap the crate to flick through it"
+                  : "Click or Space to flick · ← back one · E to pull it out · S to step back"}
               </p>
             </div>
           ) : held ? (
@@ -569,20 +521,23 @@ export default function ShopExperience({ albums, username, visiting = false }: S
                 <strong>{held.album.title}</strong> — {held.album.artist}
                 {held.album.year ? ` (${held.album.year})` : ""}
               </p>
-              <div className={styles.actions}>
-                <button type="button" className="pill" data-active="true" onClick={walkToDeck}>
-                  Take it to the turntable
-                </button>
-                {!visiting ? (
-                  <button type="button" className="pill" onClick={() => setInfo(held.album)}>
-                    Details
+              {touch || !locked ? (
+                <div className={styles.actions}>
+                  {!visiting ? (
+                    <button type="button" className="pill" onClick={() => showDetails(held.album)}>
+                      Details
+                    </button>
+                  ) : null}
+                  <button type="button" className="pill" onClick={putBack}>
+                    Put it back
                   </button>
-                ) : null}
-                <button type="button" className="pill" onClick={putBack}>
-                  Put it back
-                </button>
-              </div>
-              <p className={styles.small}>Tap the turntable to put it on — it plays on {serviceLabel}.</p>
+                </div>
+              ) : null}
+              <p className={styles.small}>
+                {touch
+                  ? `Tap the turntable in the back corner to play it on ${serviceLabel}`
+                  : `Take it to the turntable in the back corner and click to play it on ${serviceLabel} · R to put it back${visiting ? "" : " · I for details"}`}
+              </p>
             </div>
           ) : null}
 
@@ -602,8 +557,6 @@ export default function ShopExperience({ albums, username, visiting = false }: S
               </a>
             </div>
           ) : null}
-
-          {touch && !digging ? <Joystick rigRef={rig} raised={held !== null} /> : null}
         </>
       ) : null}
 
@@ -619,7 +572,7 @@ export default function ShopExperience({ albums, username, visiting = false }: S
         </div>
       ) : null}
 
-      {info ? <AlbumDetail album={info} onClose={() => setInfo(null)} /> : null}
+      {info ? <AlbumDetail album={info} onClose={closeDetails} /> : null}
     </div>
   );
 }

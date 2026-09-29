@@ -205,70 +205,40 @@ export function samplePixels(texture: THREE.Texture): Uint8ClampedArray | null {
 // Painted surfaces
 // ---------------------------------------------------------------------------
 
-let floorTexture: THREE.Texture | null = null;
-
-/** Worn, mismatched floorboards. */
-export function floorboards(): THREE.Texture {
-  if (floorTexture) return floorTexture;
-  const { element, ctx } = canvas(512, 512);
-  const boards = 8;
-  const tones = ["#5b3a22", "#6a4428", "#553520", "#704a2c", "#62402a"];
-  for (let i = 0; i < boards; i++) {
-    const w = 512 / boards;
-    ctx.fillStyle = tones[(i * 3) % tones.length];
-    ctx.fillRect(i * w, 0, w, 512);
-    // Board ends, staggered.
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.fillRect(i * w, ((i * 197) % 512), w, 3);
-    ctx.fillRect(i * w, 0, 2, 512);
-    // Grain.
-    ctx.strokeStyle = "rgba(0,0,0,0.08)";
-    for (let g = 0; g < 6; g++) {
-      ctx.beginPath();
-      const gx = i * w + 6 + ((g * 37 + i * 11) % (w - 10));
-      ctx.moveTo(gx, 0);
-      ctx.bezierCurveTo(gx + 4, 170, gx - 4, 340, gx + 2, 512);
-      ctx.stroke();
-    }
-  }
-  floorTexture = finish(element, [1, 1]);
-  return floorTexture;
-}
-
-let tartanTexture: THREE.Texture | null = null;
-
 /**
- * A red tartan rug for in front of the counter — the shop is in Scotland, and
- * it is raining outside.
+ * Gold-leaf signwriting for the inside of the shop window: the name in a
+ * shadowed serif with a line of trade underneath, mirrored, because you are
+ * reading it through the glass from the wrong side.
  */
-export function tartan(): THREE.Texture {
-  if (tartanTexture) return tartanTexture;
-  const { element, ctx } = canvas(256, 256);
-  ctx.fillStyle = "#8f1d21";
-  ctx.fillRect(0, 0, 256, 256);
+export function signwriting(name: string): THREE.Texture {
+  const { element, ctx } = canvas(1024, 256);
+  ctx.translate(1024, 0);
+  ctx.scale(-1, 1);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
 
-  const bands: [number, number, string][] = [
-    [0, 40, "rgba(18,40,28,0.75)"],
-    [60, 18, "rgba(15,25,60,0.7)"],
-    [100, 6, "rgba(240,210,120,0.6)"],
-    [150, 40, "rgba(18,40,28,0.75)"],
-    [210, 6, "rgba(10,10,10,0.6)"],
-  ];
-  for (const [at, width, colour] of bands) {
-    ctx.fillStyle = colour;
-    ctx.fillRect(at, 0, width, 256);
-    ctx.fillRect(0, at, 256, width);
+  let size = 96;
+  const face = (px: number) => `italic 700 ${px}px Georgia, "Times New Roman", serif`;
+  ctx.font = face(size);
+  while (ctx.measureText(name).width > 940 && size > 40) {
+    size -= 4;
+    ctx.font = face(size);
   }
-  // The twill: a fine diagonal hatch over everything.
-  ctx.strokeStyle = "rgba(0,0,0,0.12)";
-  for (let d = -256; d < 256; d += 4) {
-    ctx.beginPath();
-    ctx.moveTo(d, 0);
-    ctx.lineTo(d + 256, 256);
-    ctx.stroke();
-  }
-  tartanTexture = finish(element, [2, 1.4]);
-  return tartanTexture;
+  // A dark keyline behind the gold, as a signwriter would shade it.
+  ctx.fillStyle = "rgba(40, 20, 5, 0.9)";
+  ctx.fillText(name, 516, 98);
+  const gold = ctx.createLinearGradient(0, 40, 0, 150);
+  gold.addColorStop(0, "#fff1b8");
+  gold.addColorStop(0.5, "#d9a93f");
+  gold.addColorStop(1, "#8a6420");
+  ctx.fillStyle = gold;
+  ctx.fillText(name, 512, 94);
+
+  ctx.font = `600 34px Georgia, "Times New Roman", serif`;
+  ctx.fillStyle = "#d9b25a";
+  ctx.fillText("RECORDS  ·  BOUGHT  ·  SOLD  ·  EXCHANGED", 512, 200);
+
+  return finish(element);
 }
 
 /** The divider card sticking up out of a crate: genre and which crate. */
