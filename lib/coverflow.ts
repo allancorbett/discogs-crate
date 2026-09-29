@@ -19,7 +19,7 @@ export interface Geometry {
   zIndex: number;
 }
 
-const CENTRE_GAP = 0.58; // gap between the centre cover and the first side one
+const CENTRE_GAP = 0.78; // gap between the centre cover and the first side one
 const SIDE_STEP = 0.3; // additional offset per cover further out
 const SIDE_COMPRESSION = 0.72; // <1 packs distant covers tighter, as iTunes did
 const ANGLE = 62; // degrees the side covers are turned by
@@ -30,6 +30,15 @@ const FADE_END = 10.5; // …and are fully transparent here
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
+
+/**
+ * How far through its turn a cover is, for how far it has travelled from the
+ * centre (0..1). Front-loaded, so a cover leaving the centre swings to its side
+ * angle and drops back early in its move instead of halfway through it. Two
+ * covers passing each other mid-swipe are then already turned away and apart,
+ * rather than both nearly square-on and lying across one another.
+ */
+const turn = (t: number) => 1 - (1 - t) ** 2;
 
 /** Positive modulo — JS `%` keeps the sign of the dividend. */
 export function wrapIndex(index: number, count: number): number {
@@ -62,6 +71,7 @@ export function geometryFor(distance: number): Geometry {
   const inner = clamp(distance, -1, 1);
   const outer = distance - inner;
   const magnitude = Math.abs(distance);
+  const turned = Math.sign(inner) * turn(Math.abs(inner));
 
   const x =
     inner * CENTRE_GAP +
@@ -74,15 +84,15 @@ export function geometryFor(distance: number): Geometry {
     // The small extra depth per cover further out keeps the browser's own 3D
     // sorting in agreement with zIndex, instead of leaving coplanar covers to
     // paint in an arbitrary order.
-    z: -DEPTH * Math.abs(inner) - 2 * Math.abs(outer),
+    z: -DEPTH * Math.abs(turned) - 2 * Math.abs(outer),
     // Side covers turn to face in towards the centre, as in iTunes: the edge
     // nearest the centre recedes and the outer edge comes towards the viewer.
     // (A positive rotateY sends an element's right edge away, so the right
     // stack turns negative.) A cover sliding in from the right swings its
     // left edge forward and its right edge back until it is square-on, then
     // carries on turning the same way as it leaves to the left.
-    rotate: -inner * ANGLE,
-    scale: 1 + CENTRE_LIFT * (1 - Math.abs(inner)),
+    rotate: -turned * ANGLE,
+    scale: 1 + CENTRE_LIFT * (1 - Math.abs(turned)),
     opacity: clamp(fade, 0, 1),
     // The centre cover sits on top of everything, and each side cover sits on
     // top of the ones further out. With the covers facing inward, a cover's

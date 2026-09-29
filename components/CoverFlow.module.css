@@ -47,7 +47,7 @@
   /* Fallback for engines without container query units. Viewport height is a
      poor stand-in for the stage — the header and the order bar are not in it —
      so it is kept conservative rather than accurate. */
-  --cover: clamp(140px, min(30vh, 62vw), 330px);
+  --cover: clamp(140px, min(30vh, 54vw), 330px);
   position: absolute;
   inset: 0;
   perspective: 1100px;
@@ -62,12 +62,14 @@
  * midline (see .slot) and the centre cover is scaled up another 14% about its
  * own middle, putting its top edge 0.79 cover-heights up — so anything past
  * 0.63 of the stage height loses that edge, which on a phone reads as the
- * sleeve running up under the header. 0.6 leaves a little air above it; the
- * width cap keeps the side covers in frame on a narrow screen.
+ * sleeve running up under the header. 0.6 leaves a little air above it. The
+ * width cap leaves room either side for the gap the first side covers keep
+ * from the centre one (see CENTRE_GAP), so on a phone the neighbours still
+ * show rather than sitting off the edge of the screen.
  */
 @supports (container-type: size) {
   .track {
-    --cover: min(60cqh, 62cqw, 330px);
+    --cover: min(60cqh, 54cqw, 330px);
   }
 }
 

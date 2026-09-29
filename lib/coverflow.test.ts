@@ -100,6 +100,22 @@ describe("geometryFor", () => {
     }
   });
 
+  it("turns a cover most of the way before it is halfway out", () => {
+    // Two covers passing mid-swipe must already be turned away from each
+    // other, or they lie nearly square-on across one another.
+    const full = Math.abs(geometryFor(1).rotate);
+    expect(Math.abs(geometryFor(0.5).rotate)).toBeGreaterThan(0.7 * full);
+    expect(geometryFor(0.5).z).toBeLessThan(0.7 * geometryFor(1).z);
+  });
+
+  it("keeps the first side cover clear of the centre cover", () => {
+    // Centre half-width (scaled) plus the side cover's half-width turned edge
+    // on: anything less and the neighbour tucks under the centre at rest.
+    const centreHalf = geometryFor(0).scale / 2;
+    const sideHalf = Math.cos((Math.abs(geometryFor(1).rotate) * Math.PI) / 180) / 2;
+    expect(geometryFor(1).x).toBeGreaterThanOrEqual(centreHalf + sideHalf - 0.05);
+  });
+
   it("interpolates rather than snapping between states", () => {
     const half = geometryFor(0.5);
     expect(half.rotate).toBeLessThan(0);
