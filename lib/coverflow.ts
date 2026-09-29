@@ -75,17 +75,21 @@ export function geometryFor(distance: number): Geometry {
     // sorting in agreement with zIndex, instead of leaving coplanar covers to
     // paint in an arbitrary order.
     z: -DEPTH * Math.abs(inner) - 2 * Math.abs(outer),
-    // Side covers turn to face outward, so the edge nearest the centre reads
-    // as closest to the viewer — the classic fanned-stack look.
-    rotate: inner * ANGLE,
+    // Side covers turn to face in towards the centre, as in iTunes: the edge
+    // nearest the centre recedes and the outer edge comes towards the viewer.
+    // (A positive rotateY sends an element's right edge away, so the right
+    // stack turns negative.) A cover sliding in from the right swings its
+    // left edge forward and its right edge back until it is square-on, then
+    // carries on turning the same way as it leaves to the left.
+    rotate: -inner * ANGLE,
     scale: 1 + CENTRE_LIFT * (1 - Math.abs(inner)),
     opacity: clamp(fade, 0, 1),
-    // The centre cover sits on top of everything. Its immediate neighbours
-    // drop sharply below it (1000 -> 900) so the centre never gets buried,
-    // but beyond that the stack reverses: covers further out climb back up
-    // by 10 per step, so each one overlaps the (rotated, half-hidden) cover
-    // in front of it rather than being hidden beneath it.
-    zIndex: Math.round(1000 - Math.abs(inner) * 100 + Math.abs(outer) * 10),
+    // The centre cover sits on top of everything, and each side cover sits on
+    // top of the ones further out. With the covers facing inward, a cover's
+    // near, outer edge lies over the recessed inner edge of the next one out,
+    // so painting nearer-the-centre last is what keeps that edge from being
+    // clipped by the cover behind it.
+    zIndex: Math.round(1000 - Math.abs(inner) * 100 - Math.abs(outer) * 10),
   };
 }
 

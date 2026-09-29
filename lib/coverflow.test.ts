@@ -61,8 +61,8 @@ describe("geometryFor", () => {
   it("leaves the centre cover square-on and largest", () => {
     const centre = geometryFor(0);
     expect(centre.x).toBe(0);
-    expect(centre.rotate).toBe(0);
     // toBeCloseTo, because negating zero gives -0 and Object.is minds.
+    expect(centre.rotate).toBeCloseTo(0);
     expect(centre.z).toBeCloseTo(0);
     expect(centre.scale).toBeGreaterThan(1);
     expect(centre.opacity).toBe(1);
@@ -81,10 +81,29 @@ describe("geometryFor", () => {
     expect(Math.abs(geometryFor(1).rotate)).toBeGreaterThan(45);
   });
 
+  it("turns side covers to face in towards the centre", () => {
+    // CSS rotateY: positive sends the right edge away from the viewer. On the
+    // right the outer (right) edge comes forward; on the left, the outer
+    // (left) edge does.
+    expect(geometryFor(2).rotate).toBeLessThan(0);
+    expect(geometryFor(-2).rotate).toBeGreaterThan(0);
+  });
+
+  it("keeps turning the same way as a cover crosses the centre", () => {
+    // Right to left, the angle rises steadily: right edge forward, square-on,
+    // then right edge back — never flipping back on itself.
+    let previous = -Infinity;
+    for (let distance = 1; distance >= -1; distance -= 0.125) {
+      const { rotate } = geometryFor(distance);
+      expect(rotate).toBeGreaterThan(previous);
+      previous = rotate;
+    }
+  });
+
   it("interpolates rather than snapping between states", () => {
     const half = geometryFor(0.5);
-    expect(half.rotate).toBeGreaterThan(0);
-    expect(half.rotate).toBeLessThan(geometryFor(1).rotate);
+    expect(half.rotate).toBeLessThan(0);
+    expect(half.rotate).toBeGreaterThan(geometryFor(1).rotate);
     expect(half.x).toBeGreaterThan(0);
     expect(half.x).toBeLessThan(geometryFor(1).x);
   });
@@ -104,15 +123,17 @@ describe("geometryFor", () => {
     expect(far).toBeLessThan(near);
   });
 
-  it("keeps the centre cover on top and stacks the rest outward", () => {
+  it("keeps the centre cover on top and each side cover over the next one out", () => {
     expect(geometryFor(0).zIndex).toBe(1000);
     expect(geometryFor(1).zIndex).toBe(900);
-    expect(geometryFor(2).zIndex).toBe(910);
-    expect(geometryFor(3).zIndex).toBe(920);
-    // The centre always wins, even against covers stacked far out.
-    expect(geometryFor(0).zIndex).toBeGreaterThan(geometryFor(8).zIndex);
-    // Past the immediate neighbour, farther covers climb back above nearer ones.
-    expect(geometryFor(4).zIndex).toBeGreaterThan(geometryFor(1).zIndex);
+    expect(geometryFor(2).zIndex).toBe(890);
+    expect(geometryFor(3).zIndex).toBe(880);
+    for (let distance = 0; distance < 11; distance += 0.25) {
+      expect(geometryFor(distance).zIndex).toBeGreaterThanOrEqual(
+        geometryFor(distance + 0.25).zIndex,
+      );
+      expect(geometryFor(-distance).zIndex).toBe(geometryFor(distance).zIndex);
+    }
   });
 
   it("fades the window edge out instead of popping it", () => {
