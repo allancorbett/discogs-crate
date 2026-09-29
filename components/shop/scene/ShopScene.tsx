@@ -1,18 +1,21 @@
 "use client";
 
-import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import * as THREE from "three";
 import type { Album } from "@/lib/discogs/types";
 import { EYE_HEIGHT, type PlacedCrate, type ShopLayout } from "@/lib/shop/layout";
+import { QUALITY_LEVELS, requestedLevel, startingLevel, type QualityLevel } from "@/lib/shop/quality";
+import { Controls, type Aim } from "../controls";
+import { pick, type Interaction } from "../interact";
 import type { Rig } from "../rig";
 import { DustMotes, Lighting } from "./Atmosphere";
 import { Bins } from "./Bins";
 import { Cat } from "./Cat";
 import { CrateDetail } from "./CrateDetail";
-import { isTap } from "./events";
 import { HeldRecord } from "./HeldRecord";
 import { Player } from "./Player";
+import { PostFX } from "./PostFX";
 import { Room } from "./Room";
 import { Turntable } from "./Turntable";
 
@@ -23,12 +26,16 @@ const NEAR_LIMIT = 18;
 export interface SceneHandle {
   /** Renders a frame and returns it as an image, for the snapshot button. */
   capture: () => string | null;
+  /** What lies under a point on the screen, within reach. */
+  pick: (aim: Aim) => Interaction | null;
 }
 
 export interface ShopSceneProps {
   layout: ShopLayout;
   username: string;
   rig: RefObject<Rig>;
+  /** Where the camera starts, before the first frame moves it. */
+  start: { x: number; z: number };
   posters: Album[];
   digging: { crate: PlacedCrate; index: number } | null;
   held: { album: Album; from: THREE.Object3D | null } | null;
@@ -37,10 +44,17 @@ export interface ShopSceneProps {
   away: Set<number>;
   registry: Map<number, THREE.Object3D>;
   handleRef: RefObject<SceneHandle | null>;
-  onCrateTap: (crate: PlacedCrate) => void;
-  onDeckTap: () => void;
-  onFloorTap: (point: { x: number; z: number }) => void;
-  onPet: () => void;
+  controlsRef: RefObject<Controls | null>;
+  touch: boolean;
+  /** Bumped each time the cat is stroked, to set it purring. */
+  petted: number;
+  onFire: (aim: Aim) => void;
+  onLockChange: (locked: boolean) => void;
+  onStick: (stick: { origin: Aim; vector: Aim } | null) => void;
+  /** What the crosshair is on, when that changes. */
+  onAim: (interaction: Interaction | null) => void;
+  /** The scene is compiled and has drawn: the loading bar can go. */
+  onReady: () => void;
 }
 
 /** Keeps track of which crates are close enough to draw in detail. */
@@ -82,78 +96,152 @@ function NearWatcher({
   return null;
 }
 
-function Bridge({ handleRef }: { handleRef: RefObject<SceneHandle | null> }) {
+/**
+ * Wires the musicmaze-style controls to the canvas, exposes picking and
+ * snapshots to the page, and keeps the crosshair told what it is over.
+ */
+function Bridge(props: {
+  handleRef: RefObject<SceneHandle | null>;
+  controlsRef: RefObject<Controls | null>;
+  renderRef: RefObject<(() => void) | null>;
+  onFire: (aim: Aim) => void;
+  onLockChange: (locked: boolean) => void;
+  onStick: (stick: { origin: Aim; vector: Aim } | null) => void;
+  onAim: (interaction: Interaction | null) => void;
+  onReady: () => void;
+}) {
   const { gl, scene, camera } = useThree();
+  const { handleRef, controlsRef, renderRef } = props;
+
+  // The latest callbacks, read at event time so the controls are built once.
+  const callbacks = useRef(props);
+  useEffect(() => {
+    callbacks.current = props;
+  });
+
+  useEffect(() => {
+    const controls = new Controls(gl.domElement);
+    controls.onFire = (aim) => callbacks.current.onFire(aim);
+    controls.onLockChange = (locked) => callbacks.current.onLockChange(locked);
+    controls.onStick = (stick) => callbacks.current.onStick(stick);
+    controlsRef.current = controls;
+    return () => {
+      controls.dispose();
+      controlsRef.current = null;
+    };
+  }, [gl, controlsRef]);
+
   useEffect(() => {
     handleRef.current = {
       capture: () => {
-        // Draw a fresh frame and read it straight back, before the browser
+        // Draw a finished frame and read it straight back, before the browser
         // gets a chance to clear the buffer.
-        gl.render(scene, camera);
+        renderRef.current?.();
         try {
           return gl.domElement.toDataURL("image/jpeg", 0.92);
         } catch {
           return null;
         }
       },
+      pick: (aim) => pick(scene, camera, aim),
     };
     return () => {
       handleRef.current = null;
     };
-  }, [gl, scene, camera, handleRef]);
+  }, [gl, scene, camera, handleRef, renderRef]);
+
+  // Compile every shader up front (in parallel where the driver allows),
+  // then let a few frames draw — the nearby crates mount on the first of
+  // them — before saying the shop is ready.
+  const readyIn = useRef<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    gl.compileAsync(scene, camera)
+      .catch(() => {})
+      .then(() => {
+        if (live) readyIn.current = 12;
+      });
+    return () => {
+      live = false;
+    };
+  }, [gl, scene, camera]);
+  useFrame(() => {
+    if (readyIn.current === null) return;
+    if (--readyIn.current <= 0) {
+      readyIn.current = null;
+      callbacks.current.onReady();
+    }
+  });
+
+  const frame = useRef(0);
+  const last = useRef<Interaction | null>(null);
+  useFrame(() => {
+    if (++frame.current % 6 !== 0) return;
+    const found = pick(scene, camera, { x: 0, y: 0 });
+    const prev = last.current;
+    const same =
+      prev === found ||
+      (prev?.kind === found?.kind &&
+        (prev?.kind !== "crate" || (found?.kind === "crate" && prev.crate.id === found.crate.id)));
+    if (!same) {
+      last.current = found;
+      callbacks.current.onAim(found);
+    }
+  });
+
   return null;
 }
 
 export function ShopScene(props: ShopSceneProps) {
-  const { layout, rig, digging, held, playing, away, registry } = props;
+  const { layout, rig, digging, held, playing, away, registry, touch } = props;
   const [near, setNear] = useState<Set<string>>(() => new Set());
+  const [startLevel] = useState(
+    () => requestedLevel(window.location.search) ?? startingLevel(touch),
+  );
+  const [quality, setQuality] = useState<QualityLevel>(() => QUALITY_LEVELS[startLevel]);
+  const renderRef = useRef<(() => void) | null>(null);
 
   const crateById = useMemo(
     () => new Map(layout.crates.map((crate) => [crate.id, crate])),
     [layout.crates],
   );
 
-  const tapFloor = (event: ThreeEvent<MouseEvent>) => {
-    if (!isTap(event)) return;
-    event.stopPropagation();
-    props.onFloorTap({ x: event.point.x, z: event.point.z });
-  };
-
-  const spawn = layout.spawn;
+  const { x, z } = props.start;
 
   return (
     <Canvas
-      dpr={[1, 1.5]}
-      gl={{ antialias: true, powerPreference: "high-performance" }}
-      camera={{
-        fov: 62,
-        near: 0.05,
-        far: 60,
-        position: [spawn.x, EYE_HEIGHT, spawn.z],
-      }}
-      onCreated={({ scene }) => {
-        scene.background = new THREE.Color("#140d09");
-        scene.fog = new THREE.Fog("#140d09", 8, 28);
+      dpr={1}
+      gl={{ antialias: false, powerPreference: "high-performance", stencil: false }}
+      camera={{ fov: 62, near: 0.05, far: 60, position: [x, EYE_HEIGHT, z] }}
+      onCreated={({ scene, camera }) => {
+        camera.rotation.order = "YXZ";
+        scene.background = new THREE.Color("#0d0906");
+        scene.fog = new THREE.Fog("#0d0906", 10, 32);
       }}
     >
-      <Bridge handleRef={props.handleRef} />
-      <Player rig={rig} layout={layout} />
-      <NearWatcher
-        layout={layout}
-        rig={rig}
-        digging={digging?.crate ?? null}
-        onChange={setNear}
+      <Bridge
+        handleRef={props.handleRef}
+        controlsRef={props.controlsRef}
+        renderRef={renderRef}
+        onFire={props.onFire}
+        onLockChange={props.onLockChange}
+        onStick={props.onStick}
+        onAim={props.onAim}
+        onReady={props.onReady}
       />
-      <Lighting layout={layout} rig={rig} playing={playing} />
-
-      <Room
-        layout={layout}
-        username={props.username}
-        posters={props.posters}
-        onFloorTap={tapFloor}
+      <PostFX
+        quality={quality}
+        onQualityChange={setQuality}
+        touch={touch}
+        startLevel={startLevel}
+        renderRef={renderRef}
       />
+      <Player rig={rig} layout={layout} controlsRef={props.controlsRef} />
+      <NearWatcher layout={layout} rig={rig} digging={digging?.crate ?? null} onChange={setNear} />
+      <Lighting layout={layout} rig={rig} playing={playing} quality={quality} />
 
-      <Bins layout={layout} near={near} away={away} onCrateTap={props.onCrateTap} />
+      <Room layout={layout} username={props.username} posters={props.posters} />
+      <Bins layout={layout} near={near} away={away} />
 
       {[...near].map((id) => {
         const crate = crateById.get(id);
@@ -161,24 +249,12 @@ export function ShopScene(props: ShopSceneProps) {
         const albums = crate.albums.filter((album) => !away.has(album.id));
         const current = digging?.crate.id === id ? digging.index : null;
         return (
-          <CrateDetail
-            key={id}
-            crate={crate}
-            albums={albums}
-            current={current}
-            registry={registry}
-            onTap={props.onCrateTap}
-          />
+          <CrateDetail key={id} crate={crate} albums={albums} current={current} registry={registry} />
         );
       })}
 
-      <Turntable
-        layout={layout}
-        playing={playing}
-        ready={held !== null}
-        onTap={props.onDeckTap}
-      />
-      <Cat position={[layout.cat.x, layout.cat.y, layout.cat.z]} onPet={props.onPet} />
+      <Turntable layout={layout} playing={playing} ready={held !== null} />
+      <Cat position={[layout.cat.x, layout.cat.y, layout.cat.z]} petted={props.petted} />
 
       {held ? <HeldRecord key={held.album.id} album={held.album} from={held.from} /> : null}
 
@@ -186,4 +262,3 @@ export function ShopScene(props: ShopSceneProps) {
     </Canvas>
   );
 }
-

@@ -1,7 +1,7 @@
 # Crate
 
 Browse your Discogs collection as a CoverFlow-style carousel — filed by artist,
-year or genre, or shuffled — or walk round it as a cosy, low-poly 3D record
+year or genre, or shuffled — or walk round it as a warm, late-night 3D record
 shop.
 
 Next.js (App Router) + TypeScript, deployable to Vercel as-is.
@@ -210,27 +210,45 @@ you open it):
 - **Crates by genre**, at most five records each, on double-sided bins at waist
   height. `lib/shop/layout.ts` files them and grows the room to fit; big
   collections become a long shop rather than an absurdly wide one.
-- **Dig** by tapping a crate: records flick forward one at a time
-  (`lib/shop/sleeves.ts`). Pull one out and it sits in your hands.
+- **Dig** by aiming at a crate and clicking: records flick forward one at a
+  time (`lib/shop/sleeves.ts`). Pull one out and it sits in your hands.
 - **The turntable** is on the counter in the back corner. Put a record on it and
   it opens in Spotify, Apple Music, Qobuz or YouTube in a new tab (pick which in
-  the top bar); the platter spins, the arm drops, the sleeve stands up on the
-  counter and the lamps shift toward the cover's colour.
-- **Atmosphere:** rain on the window, fairy lights, dust in the lamplight, your
-  name in neon, a tartan rug and a ginger cat asleep on the counter. Sound —
+  the top bar); the platter spins, the strobe lights, the arm swings over, the
+  sleeve stands up on the counter and the lamps shift toward the cover's colour.
+- **Atmosphere:** oak floorboards, exposed brick over green panelling, a wall of
+  records, a shop window with rain on it and your name in gold leaf, your name
+  in neon, festoon lights, a tartan rug and a ginger cat asleep on the counter.
+  Sound —
   rain, needle crackle, sleeves flicking, the door bell, the cat purring — is
   synthesised with Web Audio (`lib/shop/ambience.ts`); there are no audio files.
 - **Share it:** `/shop/<username>` is a public, read-only shop for any Discogs
   collection that is public. **Snapshot** turns the current view into a
   postcard for the share sheet or a download.
 
-Walk with WASD or the on-screen stick, drag to look, or tap the floor to walk
-there (`lib/shop/path.ts` finds the way round the bins). Only the nearest
-crates carry real sleeve art; everything else is instanced, so a shop of
-thousands of records is still a handful of draw calls.
+Movement matches [musicmaze](https://github.com/allancorbett/musicmaze)
+(`components/shop/controls.ts`, `lib/shop/headbob.ts`):
 
-Nothing in the scene is fetched from a third party: signs, floorboards and
-the rug are painted on a canvas, and covers come through the same-origin
+| | Desktop | Touch |
+|---|---|---|
+| Walk | WASD / arrows, Shift to hurry | Left thumb (a floating stick) |
+| Look | Mouse (pointer lock) | Drag on the right |
+| Use | Click what's under the crosshair | Tap it |
+| While digging | Click / Space to flick, ← back, E to pull out, S to step back | Tap to flick, buttons |
+| Pause | Esc | — |
+
+It is lit and rendered to look like a real room: soft shadows from the lamps
+nearest you, ambient occlusion, bloom on the bulbs and neon, filmic tone
+mapping and a faint room reflection on anything glossy. `lib/shop/quality.ts`
+watches frame times and steps those down on a device that can't keep up;
+`?quality=0` to `3` in the address forces a level. Only the nearest crates
+carry real sleeve art; everything else is instanced, so a shop of thousands of
+records is still a handful of draw calls.
+
+Nothing in the scene is fetched from a third party. Every surface — oak, brick,
+panelling, tartan, grille cloth, brushed metal, record grooves — is painted at
+runtime from seeded noise into colour, normal and roughness maps
+(`components/shop/materials.ts`), and covers come through the same-origin
 `/api/cover` (WebGL can only read images whose server allows it), so the CSP
 needs no new origins.
 
@@ -241,8 +259,8 @@ npm test
 ```
 
 Covers the pure layers: carousel geometry and wrapping, slot recycling, spin
-planning, ordering and shuffling, the shop's floor plan, digging poses, path
-finding and mood colours, and collection normalization — including Discogs quirks like the `(2)` disambiguator in
+planning, ordering and shuffling, the shop's floor plan, digging poses, head bob,
+the quality governor, tileable noise and normal maps, and mood colours, and collection normalization — including Discogs quirks like the `(2)` disambiguator in
 "Nirvana (2)" and `year: 0` meaning "unknown".
 
 The OAuth signer is tested too: RFC 3986 percent-encoding, signature base string

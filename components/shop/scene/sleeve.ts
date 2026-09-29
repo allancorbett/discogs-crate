@@ -22,13 +22,22 @@ function build(pivot: "centre" | "bottom") {
 export const sleeveCentred = build("centre");
 export const sleeveOnEdge = build("bottom");
 
-const materials = new WeakMap<THREE.Texture, THREE.MeshStandardMaterial>();
+const materials = new WeakMap<THREE.Texture, THREE.MeshPhysicalMaterial>();
 
-/** Shared per cover, so a sleeve seen in two places costs one material. */
-export function sleeveMaterial(texture: THREE.Texture): THREE.MeshStandardMaterial {
+/**
+ * Printed card under shrink-wrap: a matte print with a thin glossy coat, so
+ * sleeves catch the lamps the way wrapped records in a shop do. Shared per
+ * cover, so a sleeve seen in two places costs one material.
+ */
+export function sleeveMaterial(texture: THREE.Texture): THREE.MeshPhysicalMaterial {
   let material = materials.get(texture);
   if (!material) {
-    material = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.6 });
+    material = new THREE.MeshPhysicalMaterial({
+      map: texture,
+      roughness: 0.62,
+      clearcoat: 0.55,
+      clearcoatRoughness: 0.22,
+    });
     materials.set(texture, material);
   }
   return material;

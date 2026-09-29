@@ -78,6 +78,8 @@ export interface ShopLayout {
   /** Where the sleeve of whatever is playing stands up on the counter. */
   nowPlaying: { x: number; z: number; y: number };
   cat: { x: number; z: number; y: number };
+  /** Shelving along the right-hand wall, between the door and the counter. */
+  wallShelf: Box;
   spawn: { x: number; z: number; yaw: number };
   /** Everything the player cannot walk through, besides the walls. */
   obstacles: Box[];
@@ -207,7 +209,18 @@ export function placeCrates(crates: ShopCrate[]): ShopLayout {
     height: 0.96,
   };
 
-  const obstacles: Box[] = [...bins, counter];
+  // Floor-to-ceiling shelving down the right-hand wall, stopping short of the
+  // counter and of the door end so neither corner is boxed in.
+  const shelfFront = depth / 2 - 1.4;
+  const shelfBack = counter.z + counter.depth / 2 + 1.6;
+  const wallShelf = {
+    x: width / 2 - 0.2,
+    z: (shelfFront + shelfBack) / 2,
+    width: 0.4,
+    depth: Math.max(0, shelfFront - shelfBack),
+  };
+
+  const obstacles: Box[] = [...bins, counter, wallShelf];
 
   return {
     room: { width, depth, height },
@@ -225,6 +238,7 @@ export function placeCrates(crates: ShopCrate[]): ShopLayout {
       z: counter.z,
       y: counter.height,
     },
+    wallShelf,
     spawn: { x: 0, z: depth / 2 - 1.2, yaw: 0 },
     obstacles,
   };

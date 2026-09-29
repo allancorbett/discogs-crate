@@ -1,22 +1,25 @@
 "use client";
 
 import { useFrame } from "@react-three/fiber";
-import { useRef, type RefObject } from "react";
+import { useMemo, useRef, type RefObject } from "react";
 import * as THREE from "three";
-import {
-  CRATE_RIM,
-  EYE_HEIGHT,
-  digStance,
-  resolveMove,
-  type ShopLayout,
-} from "@/lib/shop/layout";
+import { HeadBob, prefersReducedMotion } from "@/lib/shop/headbob";
+import { CRATE_RIM, EYE_HEIGHT, digStance, resolveMove, type ShopLayout } from "@/lib/shop/layout";
+import { MAX_PITCH, type Controls } from "../controls";
 import type { Rig } from "../rig";
 
-const WALK_SPEED = 1.9;
+/** Metres a second, as in musicmaze. */
+const WALK_SPEED = 3.4;
+const SPRINT_MULTIPLIER = 1.7;
+/** musicmaze holds this horizontal field of view whatever the screen shape. */
+const HORIZONTAL_FOV = 88;
+
 /** Leaning over a crate: a little lower than standing, looking down into it. */
 const DIG_EYE = 1.5;
 /** How far back from the crate's centre your eyes are while digging. */
 const DIG_BACK = 0.62;
+/** Seconds to ease out of a crate back to walking. */
+const STAND_UP = 0.35;
 
 const targetPosition = new THREE.Vector3();
 const targetQuaternion = new THREE.Quaternion();
@@ -26,148 +29,113 @@ const lookAt = new THREE.Vector3();
 const lookMatrix = new THREE.Matrix4();
 const up = new THREE.Vector3(0, 1, 0);
 
-/** Turns `from` toward `to` by the shortest way round. */
-function turnToward(from: number, to: number, amount: number) {
-  const delta = Math.atan2(Math.sin(to - from), Math.cos(to - from));
-  return from + delta * amount;
-}
-
 interface Props {
   rig: RefObject<Rig>;
   layout: ShopLayout;
+  controlsRef: RefObject<Controls | null>;
 }
 
 /**
- * Moves the camera: walking on keys, the stick or a tap-to-go target, and
- * easing over a crate when you dig into one. Every change of pose is smoothed,
- * so switching between walking and digging reads as leaning in, not a cut.
+ * Walking, the musicmaze way: instant velocity (full speed while a key is
+ * held, none when it's let go), mouse look with no smoothing, Shift to hurry,
+ * sliding along whatever you walk into, and a head bob tied to the ground
+ * actually covered. Digging into a crate is the one time the camera eases:
+ * it leans in over the crate, and back out when you step away.
  */
-export function Player({ rig: rigRef, layout }: Props) {
-  const bob = useRef(0);
+export function Player({ rig: rigRef, layout, controlsRef }: Props) {
+  const bob = useMemo(() => new HeadBob(!prefersReducedMotion()), []);
+  const standing = useRef(STAND_UP);
+  const wasDigging = useRef(false);
 
   useFrame((state, rawDelta) => {
     const rig = rigRef.current;
-    const delta = Math.min(rawDelta, 0.05);
-    const camera = state.camera;
+    const input = controlsRef.current;
+    const dt = Math.min(rawDelta, 0.1);
+    const camera = state.camera as THREE.PerspectiveCamera;
+
+    const vfov = THREE.MathUtils.radToDeg(
+      2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(HORIZONTAL_FOV / 2)) / camera.aspect),
+    );
+    const fov = Math.min(80, Math.max(58, vfov));
+    if (Math.abs(camera.fov - fov) > 0.01) {
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
+    }
 
     if (rig.digging) {
+      if (input) input.enabled = false;
+      wasDigging.current = true;
       const crate = rig.digging;
       const stance = digStance(crate);
-      // Stand where the dig leaves you, so backing out puts you right there.
+      // Stand where the dig leaves you, so stepping back puts you right there.
       rig.x = stance.x;
       rig.z = stance.z;
       rig.yaw = stance.yaw;
-      rig.pitch = -0.35;
+      rig.pitch = -0.3;
 
       lookFrom.set(
         crate.x + Math.sin(crate.rotation) * DIG_BACK,
         DIG_EYE,
         crate.z + Math.cos(crate.rotation) * DIG_BACK,
       );
-      // Aim a little below the crate, so it sits in the upper part of the view
-      // and the controls along the bottom never cover it.
+      // Aim a little below the crate, so it sits in the upper part of the
+      // view and the controls along the bottom never cover it.
       lookAt.set(
         crate.x - Math.sin(crate.rotation) * 0.1,
         CRATE_RIM - 0.2,
         crate.z - Math.cos(crate.rotation) * 0.1,
       );
-      targetPosition.copy(lookFrom);
       lookMatrix.lookAt(lookFrom, lookAt, up);
       targetQuaternion.setFromRotationMatrix(lookMatrix);
+      const ease = 1 - Math.exp(-dt * 6);
+      camera.position.lerp(lookFrom, ease);
+      camera.quaternion.slerp(targetQuaternion, ease);
+      return;
+    }
+
+    if (input) input.enabled = true;
+    if (wasDigging.current) {
+      wasDigging.current = false;
+      standing.current = 0;
+    }
+
+    const intent = input?.consume() ?? { forward: 0, strafe: 0, yawDelta: 0, pitchDelta: 0 };
+    rig.yaw += intent.yawDelta;
+    rig.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, rig.pitch + intent.pitchDelta));
+
+    let stepped = 0;
+    if (intent.forward !== 0 || intent.strafe !== 0) {
+      const speed = WALK_SPEED * (input?.sprinting ? SPRINT_MULTIPLIER : 1) * dt;
+      const sin = Math.sin(rig.yaw);
+      const cos = Math.cos(rig.yaw);
+      const moved = resolveMove(layout, rig, {
+        x: rig.x + (-sin * intent.forward + cos * intent.strafe) * speed,
+        z: rig.z + (-cos * intent.forward - sin * intent.strafe) * speed,
+      });
+      stepped = Math.hypot(moved.x - rig.x, moved.z - rig.z);
+      rig.x = moved.x;
+      rig.z = moved.z;
+    }
+
+    const { y, sway } = bob.update(stepped, dt);
+    targetPosition.set(
+      rig.x + Math.cos(rig.yaw) * sway,
+      EYE_HEIGHT + y,
+      rig.z - Math.sin(rig.yaw) * sway,
+    );
+    euler.set(rig.pitch, rig.yaw, 0, "YXZ");
+    targetQuaternion.setFromEuler(euler);
+
+    if (standing.current < STAND_UP) {
+      // Straightening up from the crate: the one eased move while walking.
+      standing.current += dt;
+      const ease = 1 - Math.exp(-dt * 12);
+      camera.position.lerp(targetPosition, ease);
+      camera.quaternion.slerp(targetQuaternion, ease);
     } else {
-      let forward = rig.input.forward - rig.input.stickY;
-      let strafe = rig.input.strafe + rig.input.stickX;
-      const length = Math.hypot(forward, strafe);
-      if (length > 1) {
-        forward /= length;
-        strafe /= length;
-      }
-
-      if (length > 0.05) {
-        rig.walkTo = null;
-      } else if (rig.walkTo) {
-        const walk = rig.walkTo;
-        const arrive = () => {
-          rig.walkTo = null;
-          rig.facing = walk.face ?? null;
-          walk.then?.();
-        };
-        const waypoint = walk.path[0];
-        if (!waypoint) {
-          arrive();
-        } else {
-          const dx = waypoint.x - rig.x;
-          const dz = waypoint.z - rig.z;
-          const distance = Math.hypot(dx, dz);
-          if (distance < 0.08) {
-            walk.path.shift();
-            if (walk.path.length === 0) arrive();
-          } else {
-            const heading = Math.atan2(-dx, -dz);
-            rig.yaw = turnToward(rig.yaw, heading, Math.min(1, delta * 5));
-            const step = Math.min(distance, WALK_SPEED * delta);
-            const next = resolveMove(layout, rig, {
-              x: rig.x + (dx / distance) * step,
-              z: rig.z + (dz / distance) * step,
-            });
-            // Pressed up against something the route didn't foresee: stop
-            // there rather than pushing against it forever.
-            if (Math.hypot(next.x - rig.x, next.z - rig.z) < step * 0.2) arrive();
-            rig.x = next.x;
-            rig.z = next.z;
-            bob.current += delta * 9;
-          }
-        }
-      }
-
-      if (length > 0.05) rig.facing = null;
-      if (rig.facing) {
-        const turn = Math.min(1, delta * 4);
-        rig.yaw = turnToward(rig.yaw, rig.facing.yaw, turn);
-        rig.pitch += (rig.facing.pitch - rig.pitch) * turn;
-        if (
-          Math.abs(Math.atan2(Math.sin(rig.facing.yaw - rig.yaw), Math.cos(rig.facing.yaw - rig.yaw))) < 0.01 &&
-          Math.abs(rig.facing.pitch - rig.pitch) < 0.01
-        ) {
-          rig.facing = null;
-        }
-      }
-
-      if (length > 0.05) {
-        const sin = Math.sin(rig.yaw);
-        const cos = Math.cos(rig.yaw);
-        const speed = WALK_SPEED * delta;
-        const next = resolveMove(layout, rig, {
-          x: rig.x + (-sin * forward + cos * strafe) * speed,
-          z: rig.z + (-cos * forward - sin * strafe) * speed,
-        });
-        rig.x = next.x;
-        rig.z = next.z;
-        bob.current += delta * 9 * Math.min(1, length);
-      }
-
-      targetPosition.set(
-        rig.x,
-        EYE_HEIGHT + Math.sin(bob.current) * 0.018,
-        rig.z,
-      );
-      euler.set(rig.pitch, rig.yaw, 0);
-      targetQuaternion.setFromEuler(euler);
+      camera.position.copy(targetPosition);
+      camera.quaternion.copy(targetQuaternion);
     }
-
-    // A phone held upright sees a sliver of the room at a landscape field of
-    // view, so tall screens get a wider one.
-    if (camera instanceof THREE.PerspectiveCamera) {
-      const fov = camera.aspect < 0.8 ? 80 : camera.aspect < 1.2 ? 70 : 62;
-      if (camera.fov !== fov) {
-        camera.fov = fov;
-        camera.updateProjectionMatrix();
-      }
-    }
-
-    const ease = 1 - Math.exp(-delta * (rig.digging ? 5 : 14));
-    camera.position.lerp(targetPosition, ease);
-    camera.quaternion.slerp(targetQuaternion, ease);
   });
 
   return null;

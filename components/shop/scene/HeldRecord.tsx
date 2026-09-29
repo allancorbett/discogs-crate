@@ -5,10 +5,11 @@ import { useLayoutEffect, useRef } from "react";
 import * as THREE from "three";
 import type { Album } from "@/lib/discogs/types";
 import { SLEEVE } from "@/lib/shop/sleeves";
+import { ignoreAim } from "../interact";
 import { Disc, Sleeve } from "./Vinyl";
 
 /** Where the record sits in your hands, relative to your eyes. */
-const IN_HAND = new THREE.Vector3(0.2, -0.1, -0.78);
+const IN_HAND = new THREE.Vector3(0.26, -0.17, -0.9);
 const HAND_TILT = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.12, -0.14, 0.04));
 
 const targetPosition = new THREE.Vector3();
@@ -33,6 +34,8 @@ export function HeldRecord({ album, from }: Props) {
 
   useLayoutEffect(() => {
     const object = group.current;
+    // Held up in front of your face, it must never be what the crosshair hits.
+    ignoreAim(object);
     if (!object || !from) return;
     from.updateWorldMatrix(true, false);
     from.getWorldPosition(object.position);
@@ -56,7 +59,8 @@ export function HeldRecord({ album, from }: Props) {
     sway.setFromEuler(swayEuler);
     targetQuaternion.copy(camera.quaternion).multiply(HAND_TILT).multiply(sway);
 
-    const ease = 1 - Math.exp(-delta * 9);
+    // Snappy enough to keep up with mouse look, with just a touch of weight.
+    const ease = 1 - Math.exp(-delta * 16);
     object.position.lerp(targetPosition, ease);
     object.quaternion.slerp(targetQuaternion, ease);
   });

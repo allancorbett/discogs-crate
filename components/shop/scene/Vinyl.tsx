@@ -3,25 +3,39 @@
 import type { ThreeElements } from "@react-three/fiber";
 import * as THREE from "three";
 import type { Album } from "@/lib/discogs/types";
+import { grooves } from "../materials";
 import { useSleeveTexture } from "../textures";
 import { sleeveCentred, sleeveMaterial } from "./sleeve";
 
 const DISC_RADIUS = 0.15;
 
-const discGeometry = new THREE.CylinderGeometry(DISC_RADIUS, DISC_RADIUS, 0.003, 40);
-const labelGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.0034, 24);
-const grooveGeometry = new THREE.RingGeometry(0.06, 0.145, 40, 3);
-const vinylMaterial = new THREE.MeshStandardMaterial({
-  color: "#0c0c0e",
-  roughness: 0.28,
-  metalness: 0.3,
-});
-const grooveMaterial = new THREE.MeshStandardMaterial({
-  color: "#1b1b20",
-  roughness: 0.18,
-  metalness: 0.55,
-  side: THREE.DoubleSide,
-});
+const discGeometry = new THREE.CylinderGeometry(DISC_RADIUS, DISC_RADIUS, 0.0028, 64);
+const labelGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.0032, 40);
+const spindleHole = new THREE.CylinderGeometry(0.0036, 0.0036, 0.0036, 12);
+
+let vinyl: THREE.Material[] | null = null;
+
+/**
+ * Black vinyl: glossy, with the grooves in the playing surface picking the
+ * lamps out in rings. Cylinder groups are side, top, bottom.
+ */
+function vinylMaterials(): THREE.Material[] {
+  if (vinyl) return vinyl;
+  const set = grooves();
+  const face = new THREE.MeshPhysicalMaterial({
+    color: "#0b0b0d",
+    ...set,
+    roughness: 1,
+    metalness: 0.1,
+    clearcoat: 0.6,
+    clearcoatRoughness: 0.3,
+  });
+  const edge = new THREE.MeshStandardMaterial({ color: "#101012", roughness: 0.4 });
+  vinyl = [edge, face, face];
+  return vinyl;
+}
+
+const holeMaterial = new THREE.MeshBasicMaterial({ color: "#050505" });
 
 type GroupProps = ThreeElements["group"];
 
@@ -31,21 +45,14 @@ type GroupProps = ThreeElements["group"];
  * is the sleeve art, as on so many real pressings.
  */
 export function Disc({ album, ...props }: { album: Album } & GroupProps) {
-    const texture = useSleeveTexture(album, false);
-    const label = sleeveMaterial(texture);
-
-    return (
-      <group {...props}>
-        <mesh geometry={discGeometry} material={vinylMaterial} />
-        <mesh
-          geometry={grooveGeometry}
-          material={grooveMaterial}
-          rotation={[-Math.PI / 2, 0, 0]}
-          position={[0, 0.0016, 0]}
-        />
-        <mesh geometry={labelGeometry} material={label} />
-      </group>
-    );
+  const texture = useSleeveTexture(album, false);
+  return (
+    <group {...props}>
+      <mesh geometry={discGeometry} material={vinylMaterials()} castShadow receiveShadow />
+      <mesh geometry={labelGeometry} material={sleeveMaterial(texture)} />
+      <mesh geometry={spindleHole} material={holeMaterial} />
+    </group>
+  );
 }
 
 /** A sleeve on its own, centred, cover toward +z. `full` loads the big scan. */
@@ -57,7 +64,7 @@ export function Sleeve({
   const texture = useSleeveTexture(album, full);
   return (
     <group {...props}>
-      <mesh geometry={sleeveCentred} material={sleeveMaterial(texture)} />
+      <mesh geometry={sleeveCentred} material={sleeveMaterial(texture)} castShadow receiveShadow />
     </group>
   );
 }

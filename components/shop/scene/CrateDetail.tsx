@@ -1,16 +1,17 @@
 "use client";
 
-import { useFrame, type ThreeEvent } from "@react-three/fiber";
+import { useFrame } from "@react-three/fiber";
 import { memo, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { Album } from "@/lib/discogs/types";
 import { BIN_HEIGHT, CRATE, type PlacedCrate } from "@/lib/shop/layout";
 import { sleevePose } from "@/lib/shop/sleeves";
+import { tag } from "../interact";
 import { crateLabel, useSleeveTexture } from "../textures";
-import { isTap } from "./events";
 import { sleeveMaterial, sleeveOnEdge } from "./sleeve";
 
 const card = new THREE.MeshStandardMaterial({ color: "#e6d8bb", roughness: 0.9 });
+const brass = new THREE.MeshStandardMaterial({ color: "#b8913f", metalness: 1, roughness: 0.32 });
 
 interface SleeveProps {
   album: Album;
@@ -49,7 +50,7 @@ function Sleeve({ album, index, current, full, registry }: SleeveProps) {
 
   return (
     <group ref={pivot} position={[0, rest.y, rest.z]} rotation={[rest.angle, 0, 0]}>
-      <mesh geometry={sleeveOnEdge} material={sleeveMaterial(texture)} />
+      <mesh geometry={sleeveOnEdge} material={sleeveMaterial(texture)} castShadow receiveShadow />
     </group>
   );
 }
@@ -61,20 +62,19 @@ interface Props {
   /** Which record is up, while this is the crate being dug. */
   current: number | null;
   registry: Map<number, THREE.Object3D>;
-  onTap: (crate: PlacedCrate) => void;
 }
 
 /**
- * A crate near you, with real sleeve art in it and its divider cards. Only a
- * couple of dozen of these exist at once, whichever are closest.
+ * A crate near you, with real sleeve art in it and its cards. Only a couple
+ * of dozen of these exist at once, whichever are closest; the crate itself is
+ * drawn with all the others, instanced, in Bins.
  */
-export const CrateDetail = memo(function CrateDetail({
-  crate,
-  albums,
-  current,
-  registry,
-  onTap,
-}: Props) {
+export const CrateDetail = memo(function CrateDetail({ crate, albums, current, registry }: Props) {
+  const group = useRef<THREE.Group>(null);
+  useEffect(() => {
+    tag(group.current, { resolve: () => ({ kind: "crate", crate }) });
+  }, [crate]);
+
   const front = useMemo(
     () => crateLabel(crate.genre, crate.part, crate.parts),
     [crate.genre, crate.part, crate.parts],
@@ -96,18 +96,8 @@ export const CrateDetail = memo(function CrateDetail({
     [header, headerMaterial],
   );
 
-  const tap = (event: ThreeEvent<MouseEvent>) => {
-    if (!isTap(event)) return;
-    event.stopPropagation();
-    onTap(crate);
-  };
-
   return (
-    <group
-      position={[crate.x, BIN_HEIGHT, crate.z]}
-      rotation={[0, crate.rotation, 0]}
-      onClick={tap}
-    >
+    <group ref={group} position={[crate.x, BIN_HEIGHT, crate.z]} rotation={[0, crate.rotation, 0]}>
       {albums.map((album, index) => (
         <Sleeve
           key={album.id}
@@ -119,10 +109,13 @@ export const CrateDetail = memo(function CrateDetail({
         />
       ))}
 
-      {/* The crate's own card, on the outside of its front lip. */}
-      <mesh position={[0, 0.05, CRATE.depth / 2 + 0.002]}>
-        <planeGeometry args={[0.26, 0.085]} />
-        <meshStandardMaterial map={front} roughness={0.9} />
+      {/* The crate's own card, in a brass holder on its front slat. */}
+      <mesh position={[0, 0.048, CRATE.depth / 2 + 0.002]} material={brass} castShadow>
+        <boxGeometry args={[0.2, 0.068, 0.004]} />
+      </mesh>
+      <mesh position={[0, 0.046, CRATE.depth / 2 + 0.0045]}>
+        <planeGeometry args={[0.186, 0.056]} />
+        <meshStandardMaterial map={front} roughness={0.85} />
       </mesh>
 
       {/* The first crate of a genre carries a tall divider at the back. */}
@@ -131,15 +124,17 @@ export const CrateDetail = memo(function CrateDetail({
           position={[0, CRATE.height + 0.15, -CRATE.depth / 2 - 0.004]}
           rotation={[-0.2, 0, 0]}
           material={[card, card, card, card, headerMaterial!, card]}
+          castShadow
         >
           <boxGeometry args={[0.34, 0.13, 0.004]} />
         </mesh>
       ) : null}
 
-      {/* Something to tap on an empty crate. */}
+      {/* Something to aim at in an empty crate. */}
       {albums.length === 0 ? (
-        <mesh position={[0, 0.1, 0]} visible={false}>
-          <boxGeometry args={[CRATE.width, 0.2, CRATE.depth]} />
+        <mesh position={[0, 0.1, 0]}>
+          <boxGeometry args={[CRATE.width - 0.04, 0.02, CRATE.depth - 0.04]} />
+          <meshStandardMaterial color="#1a120c" roughness={1} />
         </mesh>
       ) : null}
     </group>
