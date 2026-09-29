@@ -79,7 +79,7 @@ function album(partial: Partial<Album> = {}): Album {
 
 const page = (count: number) => Array.from({ length: count }, () => album());
 
-function setUp(albums: Album[]) {
+function setUp(albums: Album[], onSettle: (index: number) => void = () => {}) {
   let current = albums;
 
   const slots = Array.from({ length: SLOT_COUNT }, () => ({
@@ -95,7 +95,7 @@ function setUp(albums: Album[]) {
     draggingClass: "dragging",
     getAlbums: () => current,
     onCaption: () => {},
-    onSettle: () => {},
+    onSettle,
     onSelect: () => {},
   });
 
@@ -206,5 +206,132 @@ describe("CoverFlowEngine", () => {
     const harness = setUp([album({ thumb: "", coverImage: "" })]);
     expect(harness.slots[0].thumb.src).toBeUndefined();
     expect(harness.slots[0].root.dataset.index).toBe("0");
+  });
+});
+
+/**
+ * A hand-cranked animation clock: frames only run when the test says so, each
+ * exactly 1/60s after the last, so motion is deterministic.
+ */
+function fakeClock() {
+  let now = 0;
+  let queue: FrameRequestCallback[] = [];
+
+  vi.stubGlobal("performance", { now: () => now });
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    queue.push(callback);
+    return queue.length;
+  });
+
+  return {
+    /** Runs frames until the loop stops asking for them, or `seconds` pass. */
+    run(seconds = 10) {
+      for (let elapsed = 0; elapsed < seconds && queue.length; elapsed += 1 / 60) {
+        now += 1000 / 60;
+        const frame = queue;
+        queue = [];
+        for (const callback of frame) callback(now);
+      }
+    },
+    get idle() {
+      return queue.length === 0;
+    },
+  };
+}
+
+/** The lean the engine has written into a slot's rotateY, net of its geometry. */
+const rotation = (transform: string) =>
+  Number(/rotateY\((-?[\d.]+)deg\)/.exec(transform)?.[1]);
+
+describe("CoverFlowEngine motion", () => {
+  it("comes to rest on the cover it was sent to, and says so once", () => {
+    const clock = fakeClock();
+    const settled: number[] = [];
+    const harness = setUp(page(100), (index) => settled.push(index));
+
+    harness.engine.goTo(7);
+    clock.run();
+
+    expect(clock.idle).toBe(true);
+    expect(harness.engine.centreIndex).toBe(7);
+    expect(settled).toEqual([7]);
+  });
+
+  it("stacks arrow presses made while it is still moving", () => {
+    const clock = fakeClock();
+    const harness = setUp(page(100));
+
+    harness.engine.step(1);
+    clock.run(0.05);
+    harness.engine.step(1);
+    harness.engine.step(1);
+    clock.run();
+
+    expect(harness.engine.centreIndex).toBe(3);
+  });
+
+  it("takes the short way round a wrapped collection", () => {
+    const clock = fakeClock();
+    const harness = setUp(page(100));
+
+    harness.engine.goTo(97);
+    clock.run();
+
+    expect(harness.engine.centreIndex).toBe(97);
+  });
+
+  it("gets a long way across the crate without animating every record", () => {
+    const clock = fakeClock();
+    const harness = setUp(page(3000));
+
+    harness.engine.goTo(1400);
+    clock.run(4);
+
+    expect(clock.idle).toBe(true);
+    expect(harness.engine.centreIndex).toBe(1400);
+  });
+
+  it("lets the covers lean while moving and stand straight once stopped", () => {
+    const clock = fakeClock();
+    const harness = setUp(page(100));
+    const centre = harness.slots[0].root;
+    const upright = rotation(centre.style.transform);
+
+    harness.engine.goTo(6);
+    clock.run(0.1);
+    // Mid-move, some cover near the middle should be turned by an angle that
+    // no resting position gives it: neither square-on nor the side stack's.
+    const leaning = harness.slots.some((slot) => {
+      const angle = rotation(slot.root.style.transform);
+      return Math.abs(angle) > 0.5 && Math.abs(angle) < 62 - 0.5;
+    });
+    expect(leaning).toBe(true);
+
+    clock.run();
+    expect(rotation(harness.slots[6].root.style.transform)).toBeCloseTo(upright, 2);
+  });
+
+  it("reaches the last record from a little way in", () => {
+    const clock = fakeClock();
+    const harness = setUp(page(120));
+
+    harness.engine.goTo(15);
+    clock.run();
+    harness.engine.goTo(119);
+    clock.run();
+
+    expect(harness.engine.centreIndex).toBe(119);
+  });
+
+  it("jumps without moving when told not to animate", () => {
+    const clock = fakeClock();
+    const settled: number[] = [];
+    const harness = setUp(page(100), (index) => settled.push(index));
+
+    harness.engine.goTo(42, false);
+
+    expect(clock.idle).toBe(true);
+    expect(harness.engine.centreIndex).toBe(42);
+    expect(settled).toEqual([42]);
   });
 });
