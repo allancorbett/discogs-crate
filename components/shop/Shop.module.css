@@ -1,0 +1,331 @@
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #140d09;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.frame {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.stage canvas {
+  display: block;
+}
+
+.loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* ---- Welcome ---------------------------------------------------------- */
+
+.welcome {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: radial-gradient(80% 70% at 50% 45%, rgba(20, 13, 9, 0.35), rgba(20, 13, 9, 0.85));
+}
+
+.welcomeCard {
+  max-width: 420px;
+  padding: 28px 26px 22px;
+  border: 1px solid rgba(255, 204, 77, 0.25);
+  border-radius: var(--radius-lg);
+  background: rgba(24, 16, 11, 0.86);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+
+.kicker {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.shopName {
+  margin: 6px 0 12px;
+  color: #ff8cc4;
+  font-size: clamp(1.6rem, 6vw, 2.2rem);
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1.1;
+  text-shadow:
+    0 0 12px rgba(255, 79, 163, 0.7),
+    0 0 28px rgba(255, 79, 163, 0.35);
+  overflow-wrap: anywhere;
+}
+
+.welcomeText {
+  margin: 0 0 18px;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.enter {
+  padding: 0.7em 1.6em;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.enter:hover {
+  filter: brightness(1.08);
+}
+
+.small {
+  margin: 12px 0 0;
+  color: var(--text-faint);
+  font-size: 0.74rem;
+}
+
+/* ---- HUD -------------------------------------------------------------- */
+
+.topBar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  left: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+  pointer-events: none;
+}
+
+.topBar > * {
+  pointer-events: auto;
+  background: rgba(20, 13, 9, 0.7);
+  backdrop-filter: blur(6px);
+}
+
+.service {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.35em 0.5em 0.35em 1em;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-faint);
+  font-size: 0.78rem;
+}
+
+.service select {
+  padding: 0.2em 0.4em;
+  border: none;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--text);
+  font: inherit;
+}
+
+.panel {
+  position: absolute;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  left: 50%;
+  width: min(560px, calc(100% - 32px));
+  padding: 14px 16px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: rgba(20, 13, 9, 0.82);
+  backdrop-filter: blur(8px);
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+.crateName {
+  margin: 0;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.record {
+  margin: 4px 0 10px;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.record strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.count {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+}
+
+.panel .small {
+  margin-top: 8px;
+}
+
+.nowPlaying {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(460px, calc(100% - 24px));
+  padding: 0.45em 0.6em 0.45em 0.8em;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(20, 13, 9, 0.7);
+  backdrop-filter: blur(6px);
+  color: var(--text-dim);
+  font-size: 0.78rem;
+}
+
+.npText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.npText strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.npLink {
+  flex: none;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #56ff8a;
+  box-shadow: 0 0 8px #56ff8a;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.toast {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  max-width: calc(100% - 32px);
+  padding: 0.55em 1em;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(20, 13, 9, 0.88);
+  color: var(--text);
+  font-size: 0.82rem;
+  transform: translateX(-50%);
+  overflow-wrap: anywhere;
+}
+
+.toast a {
+  color: var(--accent);
+}
+
+/* ---- Thumbstick ------------------------------------------------------- */
+
+.stick {
+  position: absolute;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  left: 24px;
+  width: 112px;
+  height: 112px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: rgba(20, 13, 9, 0.35);
+  touch-action: none;
+}
+
+/* Clear of the "in your hands" panel while you carry something. */
+.stick[data-raised="true"] {
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 200px);
+}
+
+.knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 48px;
+  height: 48px;
+  margin: -24px 0 0 -24px;
+  border-radius: 50%;
+  background: rgba(255, 204, 77, 0.75);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .topBar {
+    top: 8px;
+    right: 8px;
+    left: 8px;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 5px;
+  }
+
+  .topBar :global(.pill),
+  .service {
+    padding: 0.4em 0.7em;
+    font-size: 0.72rem;
+  }
+
+  .serviceLabel {
+    display: none;
+  }
+
+  .nowPlaying {
+    top: auto;
+    bottom: 150px;
+  }
+}

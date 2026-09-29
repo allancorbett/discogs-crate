@@ -1,7 +1,8 @@
 # Crate
 
 Browse your Discogs collection as a CoverFlow-style carousel — filed by artist,
-year or genre, or shuffled.
+year or genre, or shuffled — or walk round it as a cosy, low-poly 3D record
+shop.
 
 Next.js (App Router) + TypeScript, deployable to Vercel as-is.
 
@@ -111,6 +112,12 @@ deliberate:
 - **A nonce-based Content-Security-Policy** is set in `proxy.ts`, along with
   `X-Content-Type-Options`, `Referrer-Policy` and `frame-ancestors 'none'`.
   Scripts are allowed by nonce rather than `'unsafe-inline'`.
+- **The public shop links never spend someone else's credential.** Reading a
+  stranger's public collection goes out anonymously (or on the visitor's own
+  token), never on the demo token — `visitorStrategy` in `lib/api.ts`.
+- **The cover proxy is not an open proxy.** `/api/cover` only fetches from
+  Discogs' image hosts, refuses redirects and anything that isn't an image —
+  `lib/cover.ts`.
 - **Upstream errors are not relayed verbatim.** Discogs' wording is logged and
   replaced with something written for this app's users.
 
@@ -194,6 +201,39 @@ under whoever is browsing. Hashing leaves the records already on screen in
 the same relative order and slots the new ones in among them; re-rolling the
 seed re-deals everything, which is what pressing shuffle again should do.
 
+### The record shop
+
+Switch the header to **Record shop** and the collection becomes a room you can
+walk round (`components/shop/`, three.js via React Three Fiber, loaded only when
+you open it):
+
+- **Crates by genre**, at most five records each, on double-sided bins at waist
+  height. `lib/shop/layout.ts` files them and grows the room to fit; big
+  collections become a long shop rather than an absurdly wide one.
+- **Dig** by tapping a crate: records flick forward one at a time
+  (`lib/shop/sleeves.ts`). Pull one out and it sits in your hands.
+- **The turntable** is on the counter in the back corner. Put a record on it and
+  it opens in Spotify, Apple Music, Qobuz or YouTube in a new tab (pick which in
+  the top bar); the platter spins, the arm drops, the sleeve stands up on the
+  counter and the lamps shift toward the cover's colour.
+- **Atmosphere:** rain on the window, fairy lights, dust in the lamplight, your
+  name in neon, a tartan rug and a ginger cat asleep on the counter. Sound —
+  rain, needle crackle, sleeves flicking, the door bell, the cat purring — is
+  synthesised with Web Audio (`lib/shop/ambience.ts`); there are no audio files.
+- **Share it:** `/shop/<username>` is a public, read-only shop for any Discogs
+  collection that is public. **Snapshot** turns the current view into a
+  postcard for the share sheet or a download.
+
+Walk with WASD or the on-screen stick, drag to look, or tap the floor to walk
+there (`lib/shop/path.ts` finds the way round the bins). Only the nearest
+crates carry real sleeve art; everything else is instanced, so a shop of
+thousands of records is still a handful of draw calls.
+
+Nothing in the scene is fetched from a third party: signs, floorboards and
+the rug are painted on a canvas, and covers come through the same-origin
+`/api/cover` (WebGL can only read images whose server allows it), so the CSP
+needs no new origins.
+
 ## Tests
 
 ```bash
@@ -201,7 +241,8 @@ npm test
 ```
 
 Covers the pure layers: carousel geometry and wrapping, slot recycling, spin
-planning, ordering and shuffling, and collection normalization — including Discogs quirks like the `(2)` disambiguator in
+planning, ordering and shuffling, the shop's floor plan, digging poses, path
+finding and mood colours, and collection normalization — including Discogs quirks like the `(2)` disambiguator in
 "Nirvana (2)" and `year: 0` meaning "unknown".
 
 The OAuth signer is tested too: RFC 3986 percent-encoding, signature base string

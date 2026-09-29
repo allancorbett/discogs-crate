@@ -4,9 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlbumDetail } from "./AlbumDetail";
 import { CoverFlow, type CoverFlowHandle } from "./CoverFlow";
 import { OrderBar } from "./OrderBar";
+import { ShopView } from "./shop/ShopView";
 import { useCollection } from "@/hooks/useCollection";
 import { orderAlbums, type SortMode } from "@/lib/ordering";
 import styles from "./Crate.module.css";
+
+type View = "flow" | "shop";
+const VIEW_KEY = "crate:view";
 
 interface Props {
   username: string;
@@ -27,6 +31,26 @@ export function Crate({ username, demo = false, onSignOut }: Props) {
    */
   const [shuffleSeed, setShuffleSeed] = useState(1);
   const [panelIndex, setPanelIndex] = useState<number | null>(null);
+  const [view, setView] = useState<View>("flow");
+
+  // The last view is remembered per browser, so it can only be read on mount.
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (localStorage.getItem(VIEW_KEY) === "shop") setView("shop");
+    } catch {
+      // Storage unavailable; the cover flow it is.
+    }
+  }, []);
+
+  const chooseView = useCallback((next: View) => {
+    setView(next);
+    try {
+      localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      // Only a preference.
+    }
+  }, []);
 
   const coverFlow = useRef<CoverFlowHandle>(null);
 
@@ -107,6 +131,21 @@ export function Crate({ username, demo = false, onSignOut }: Props) {
           <span className={styles.user}>{username}</span>
         </div>
 
+        <div className={styles.views} role="group" aria-label="View">
+          {(["flow", "shop"] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={styles.view}
+              data-active={view === option}
+              aria-pressed={view === option}
+              onClick={() => chooseView(option)}
+            >
+              {option === "flow" ? "Cover flow" : "Record shop"}
+            </button>
+          ))}
+        </div>
+
         <div className={styles.status}>
           {loading ? (
             <span className={styles.loading}>
@@ -153,6 +192,14 @@ export function Crate({ username, demo = false, onSignOut }: Props) {
             </p>
           )}
         </div>
+      ) : view === "shop" ? (
+        <ShopView
+          albums={albums}
+          username={username}
+          loading={loading}
+          loaded={loaded}
+          total={total}
+        />
       ) : (
         <>
           <CoverFlow

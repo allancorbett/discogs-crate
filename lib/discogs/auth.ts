@@ -55,6 +55,17 @@ export class OAuth1Strategy implements AuthStrategy {
   }
 }
 
+/**
+ * No credential at all, for reading data Discogs publishes to anyone — a
+ * public collection. Unauthenticated requests get a smaller rate limit, which
+ * is the point: nobody's own budget is being spent on a stranger's visit.
+ */
+export class AnonymousStrategy implements AuthStrategy {
+  async authHeader(_method: string, _url: string): Promise<string> {
+    return "";
+  }
+}
+
 const SESSION_COOKIE = "discogs_token";
 const USER_COOKIE = "discogs_user";
 const DEMO_COOKIE = "discogs_demo";

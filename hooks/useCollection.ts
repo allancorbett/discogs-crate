@@ -61,8 +61,18 @@ const PUBLISH_INTERVAL_MS = 400;
 
 class UnauthorizedError extends Error {}
 
-async function fetchPage(page: number, signal: AbortSignal) {
-  const response = await fetch(`/api/collection?page=${page}`, { signal });
+/**
+ * Where the pages come from. The signed-in user's own collection by default;
+ * a shared shop link reads someone else's public one instead, and keeps it
+ * cached apart from the visitor's own.
+ */
+export interface CollectionSource {
+  endpoint: string;
+  cacheKey: string;
+}
+
+async function fetchPage(endpoint: string, page: number, signal: AbortSignal) {
+  const response = await fetch(`${endpoint}?page=${page}`, { signal });
 
   if (response.status === 401) throw new UnauthorizedError();
   if (!response.ok) {
@@ -85,25 +95,30 @@ async function fetchPage(page: number, signal: AbortSignal) {
  * sees is derived from that tag, so a user or refresh change invalidates the
  * previous result without a reset render.
  */
-export function useCollection(username: string | undefined): UseCollection {
+export function useCollection(
+  username: string | undefined,
+  source?: CollectionSource,
+): UseCollection {
   const [state, setState] = useState<State>(EMPTY);
   const [reloadKey, setReloadKey] = useState(0);
 
-  const token = `${username ?? ""}:${reloadKey}`;
+  const endpoint = source?.endpoint ?? "/api/collection";
+  const cacheKey = username ? (source?.cacheKey ?? username) : undefined;
+  const token = `${endpoint}:${username ?? ""}:${reloadKey}`;
 
   // Held so refresh() can invalidate the cache for the right user.
-  const usernameRef = useRef(username);
+  const cacheKeyRef = useRef(cacheKey);
   useEffect(() => {
-    usernameRef.current = username;
-  }, [username]);
+    cacheKeyRef.current = cacheKey;
+  }, [cacheKey]);
 
   const refresh = useCallback(() => {
-    if (usernameRef.current) clearCache(usernameRef.current);
+    if (cacheKeyRef.current) clearCache(cacheKeyRef.current);
     setReloadKey((key) => key + 1);
   }, []);
 
   useEffect(() => {
-    if (!username) return;
+    if (!username || !cacheKey) return;
 
     const controller = new AbortController();
     let cancelled = false;
@@ -118,7 +133,7 @@ export function useCollection(username: string | undefined): UseCollection {
     };
 
     (async () => {
-      const cached = reloadKey === 0 ? readCache(username) : null;
+      const cached = reloadKey === 0 ? readCache(cacheKey) : null;
       if (cached?.length) {
         update(() => ({
           token,
@@ -140,7 +155,7 @@ export function useCollection(username: string | undefined): UseCollection {
       let publishedAt = 0;
 
       try {
-        const first = await fetchPage(1, controller.signal);
+        const first = await fetchPage(endpoint, 1, controller.signal);
         if (cancelled) return;
 
         collected.push(...first.albums);
@@ -157,7 +172,7 @@ export function useCollection(username: string | undefined): UseCollection {
         }));
 
         for (let page = 2; page <= first.pages; page++) {
-          const next = await fetchPage(page, controller.signal);
+          const next = await fetchPage(endpoint, page, controller.signal);
           if (cancelled) return;
 
           collected.push(...next.albums);
@@ -179,7 +194,7 @@ export function useCollection(username: string | undefined): UseCollection {
           }));
         }
 
-        writeCache(username, collected);
+        writeCache(cacheKey, collected);
       } catch (cause) {
         if (cancelled || controller.signal.aborted) return;
 
@@ -202,7 +217,7 @@ export function useCollection(username: string | undefined): UseCollection {
       cancelled = true;
       controller.abort();
     };
-  }, [username, reloadKey, token]);
+  }, [username, cacheKey, endpoint, reloadKey, token]);
 
   const current = state.token === token;
 
