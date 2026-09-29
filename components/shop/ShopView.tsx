@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import type { Album } from "@/lib/discogs/types";
+import { LoadingBar } from "./LoadingBar";
 import styles from "./Shop.module.css";
 
 /**
@@ -10,7 +11,7 @@ import styles from "./Shop.module.css";
  */
 const ShopExperience = dynamic(() => import("./ShopExperience"), {
   ssr: false,
-  loading: () => <div className={styles.loading}>Unlocking the shop…</div>,
+  loading: () => <LoadingBar progress={null} label="Unlocking the door" />,
 });
 
 interface Props {
@@ -27,12 +28,10 @@ export function ShopView({ albums, username, loading, loaded, total, visiting }:
   if (loading) {
     return (
       <div className={styles.stage}>
-        <div className={styles.loading}>
-          <p>
-            Stocking the shelves… {loaded.toLocaleString()}
-            {total ? ` / ${total.toLocaleString()}` : ""} records
-          </p>
-        </div>
+        <LoadingBar
+          progress={total ? loaded / total : null}
+          label={`Stocking the shelves: ${loaded.toLocaleString()}${total ? ` of ${total.toLocaleString()}` : ""} records`}
+        />
       </div>
     );
   }

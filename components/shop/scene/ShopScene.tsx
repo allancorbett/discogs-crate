@@ -53,6 +53,8 @@ export interface ShopSceneProps {
   onStick: (stick: { origin: Aim; vector: Aim } | null) => void;
   /** What the crosshair is on, when that changes. */
   onAim: (interaction: Interaction | null) => void;
+  /** The scene is compiled and has drawn: the loading bar can go. */
+  onReady: () => void;
 }
 
 /** Keeps track of which crates are close enough to draw in detail. */
@@ -106,6 +108,7 @@ function Bridge(props: {
   onLockChange: (locked: boolean) => void;
   onStick: (stick: { origin: Aim; vector: Aim } | null) => void;
   onAim: (interaction: Interaction | null) => void;
+  onReady: () => void;
 }) {
   const { gl, scene, camera } = useThree();
   const { handleRef, controlsRef, renderRef } = props;
@@ -146,6 +149,29 @@ function Bridge(props: {
       handleRef.current = null;
     };
   }, [gl, scene, camera, handleRef, renderRef]);
+
+  // Compile every shader up front (in parallel where the driver allows),
+  // then let a few frames draw — the nearby crates mount on the first of
+  // them — before saying the shop is ready.
+  const readyIn = useRef<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    gl.compileAsync(scene, camera)
+      .catch(() => {})
+      .then(() => {
+        if (live) readyIn.current = 12;
+      });
+    return () => {
+      live = false;
+    };
+  }, [gl, scene, camera]);
+  useFrame(() => {
+    if (readyIn.current === null) return;
+    if (--readyIn.current <= 0) {
+      readyIn.current = null;
+      callbacks.current.onReady();
+    }
+  });
 
   const frame = useRef(0);
   const last = useRef<Interaction | null>(null);
@@ -201,6 +227,7 @@ export function ShopScene(props: ShopSceneProps) {
         onLockChange={props.onLockChange}
         onStick={props.onStick}
         onAim={props.onAim}
+        onReady={props.onReady}
       />
       <PostFX
         quality={quality}

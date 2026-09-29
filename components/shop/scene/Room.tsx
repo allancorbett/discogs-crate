@@ -502,7 +502,7 @@ function Neon({ text, position }: { text: string; position: [number, number, num
       blending: THREE.AdditiveBlending,
     });
     // Over 1 so the bloom picks the tubes out.
-    material.color.setScalar(2.2);
+    material.color.setScalar(1.35);
     return material;
   }, [texture]);
   useEffect(
@@ -519,8 +519,8 @@ function Neon({ text, position }: { text: string; position: [number, number, num
     // Mostly steady, with the odd stutter of an old transformer.
     const stutter = Math.sin(t * 0.7) > 0.985 ? (Math.sin(t * 90) > 0 ? 0.35 : 1) : 1;
     const level = (0.94 + Math.sin(t * 13) * 0.03) * stutter;
-    glow.color.setScalar(2.2 * level);
-    if (light.current) light.current.intensity = 3 * level;
+    glow.color.setScalar(1.35 * level);
+    if (light.current) light.current.intensity = 1.8 * level;
   });
 
   return (
@@ -543,7 +543,7 @@ function Neon({ text, position }: { text: string; position: [number, number, num
       <mesh position={[0, 0, 0.03]} material={glow}>
         <planeGeometry args={[2.8, 0.7]} />
       </mesh>
-      <pointLight ref={light} color="#ff4fa3" intensity={3} distance={4.5} decay={1.8} position={[0, 0, 0.5]} />
+      <pointLight ref={light} color="#ff4fa3" intensity={1.8} distance={4.5} decay={1.8} position={[0, 0, 0.5]} />
     </group>
   );
 }
@@ -569,7 +569,7 @@ function Festoon({ width, z, y }: { width: number; z: number; y: number }) {
   useEffect(() => () => cable.dispose(), [cable]);
 
   const material = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: "#fff3dc", emissive: "#ffb45e", emissiveIntensity: 6 }),
+    () => new THREE.MeshStandardMaterial({ color: "#fff3dc", emissive: "#ffb45e", emissiveIntensity: 1.6 }),
     [],
   );
 

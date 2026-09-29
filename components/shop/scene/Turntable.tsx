@@ -147,7 +147,7 @@ export function Turntable({ layout, playing, ready }: Props) {
     if (strobe.current) {
       strobe.current.emissiveIntensity = THREE.MathUtils.damp(
         strobe.current.emissiveIntensity,
-        on ? 5 : 0.2,
+        on ? 2 : 0.2,
         4,
         delta,
       );

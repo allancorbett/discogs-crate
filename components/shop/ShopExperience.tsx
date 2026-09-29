@@ -18,6 +18,8 @@ import { shopPath } from "@/lib/shop/share";
 import { STICK_RANGE } from "@/lib/shop/stick";
 import { isTouchDevice, type Aim, type Controls } from "./controls";
 import { describe, type Interaction } from "./interact";
+import { LoadingBar } from "./LoadingBar";
+import { prepareSurfaces } from "./materials";
 import { makePostcard, sharePostcard } from "./postcard";
 import { restoreRig, saveRig, type Rig } from "./rig";
 import { ShopScene, type SceneHandle } from "./scene/ShopScene";
@@ -79,6 +81,25 @@ export default function ShopExperience({ albums, username, visiting = false }: S
   const [touch, setTouch] = useState(false);
   const [aimed, setAimed] = useState<Interaction | null>(null);
   const [petted, setPetted] = useState(0);
+  // Getting ready: painting every surface, then compiling the scene, behind a
+  // loading bar — so "step inside" opens straight onto a shop, not a freeze.
+  const [prep, setPrep] = useState({ progress: 0, label: "Unpacking the stock" });
+  const [surfacesReady, setSurfacesReady] = useState(false);
+  const [sceneReady, setSceneReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    prepareSurfaces(
+      (done, label) => setPrep({ progress: done * 0.85, label }),
+      () => cancelled,
+    ).then(() => {
+      if (!cancelled) setSurfacesReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const [stick, setStick] = useState<{ x: number; y: number; vector: Aim } | null>(null);
 
   /** Where the floating thumb stick is, relative to the stage, for drawing it. */
@@ -371,26 +392,36 @@ export default function ShopExperience({ albums, username, visiting = false }: S
 
   return (
     <div className={styles.stage} ref={stage}>
-      <ShopScene
-        layout={layout}
-        username={username}
-        rig={rig}
-        start={{ x: initialRig.x, z: initialRig.z }}
-        posters={posters}
-        digging={dugCrate && digging ? { crate: dugCrate, index: digging.index } : null}
-        held={held}
-        playing={playing?.album ?? null}
-        away={away}
-        registry={registry}
-        handleRef={scene}
-        controlsRef={controls}
-        touch={touch}
-        petted={petted}
-        onFire={fire}
-        onLockChange={setLocked}
-        onStick={showStick}
-        onAim={setAimed}
-      />
+      {surfacesReady ? (
+        <ShopScene
+          onReady={() => setSceneReady(true)}
+          layout={layout}
+          username={username}
+          rig={rig}
+          start={{ x: initialRig.x, z: initialRig.z }}
+          posters={posters}
+          digging={dugCrate && digging ? { crate: dugCrate, index: digging.index } : null}
+          held={held}
+          playing={playing?.album ?? null}
+          away={away}
+          registry={registry}
+          handleRef={scene}
+          controlsRef={controls}
+          touch={touch}
+          petted={petted}
+          onFire={fire}
+          onLockChange={setLocked}
+          onStick={showStick}
+          onAim={setAimed}
+        />
+      ) : null}
+
+      {!sceneReady ? (
+        <LoadingBar
+          progress={surfacesReady ? 0.92 : prep.progress}
+          label={surfacesReady ? "Switching on the lights" : prep.label}
+        />
+      ) : null}
 
       {entered && !touch ? (
         <div className={styles.crosshair} data-active={aimed !== null} aria-hidden="true">
@@ -413,7 +444,7 @@ export default function ShopExperience({ albums, username, visiting = false }: S
         </div>
       ) : null}
 
-      {!entered ? (
+      {sceneReady && !entered ? (
         <div className={styles.welcome}>
           <div className={styles.welcomeCard}>
             <p className={styles.kicker}>{visiting ? "You're visiting" : "Welcome to"}</p>

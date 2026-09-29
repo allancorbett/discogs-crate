@@ -54,7 +54,7 @@ export function PostFX({ quality, onQualityChange, touch, startLevel, renderRef 
   useEffect(() => {
     const { gl, scene } = get();
     gl.toneMapping = THREE.ACESFilmicToneMapping;
-    gl.toneMappingExposure = 1.05;
+    gl.toneMappingExposure = 0.95;
     // Filtered PCF; the lights set a blur radius for soft edges.
     gl.shadowMap.type = THREE.PCFShadowMap;
 
@@ -81,7 +81,9 @@ export function PostFX({ quality, onQualityChange, touch, startLevel, renderRef 
     const ao = new GTAOPass(scene, camera, 1, 1);
     ao.blendIntensity = 0.85;
     ao.updateGtaoMaterial({ radius: 0.35, distanceExponent: 1.4, thickness: 1, scale: 1 });
-    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.6, 0.82);
+    // A soft halo on only the brightest things — bulbs and neon — rather
+    // than a glare over everything lit.
+    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.2, 0.3, 1.1);
     const output = new OutputPass();
     const vignette = new ShaderPass(VignetteShader);
     vignette.uniforms.offset.value = 0.95;

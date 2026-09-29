@@ -435,3 +435,46 @@ export function woodBox(
   geometry.translate(x, y, z);
   return geometry;
 }
+
+// ---------------------------------------------------------------------------
+// Getting ready
+// ---------------------------------------------------------------------------
+
+/** Every surface the shop uses, with what the loading bar says about it. */
+const SURFACES: [label: string, make: () => PbrSet][] = [
+  ["Sanding the floorboards", floorOak],
+  ["Pointing the brickwork", brick],
+  ["Painting the panelling", panelling],
+  ["Oiling the beams", ceilingBoards],
+  ["Staining the browsers", darkOak],
+  ["Knocking the crates together", pine],
+  ["Oiling the counter", butcherBlock],
+  ["Beating the rug", tartanRug],
+  ["Stretching the speaker cloth", grilleCloth],
+  ["Polishing the deck", brushedMetal],
+  ["Cutting the grooves", grooves],
+  ["Waking the cat", tabby],
+];
+
+const nextFrame = () =>
+  new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+/**
+ * Paints every surface up front, one per frame, reporting as it goes — so the
+ * work happens behind a loading bar rather than as a freeze the first time
+ * the shop is drawn.
+ */
+export async function prepareSurfaces(
+  onProgress: (done: number, label: string) => void,
+  cancelled: () => boolean = () => false,
+): Promise<void> {
+  for (let i = 0; i < SURFACES.length; i++) {
+    const [label, make] = SURFACES[i];
+    onProgress(i / SURFACES.length, label);
+    // Let the bar paint before the next chunk of work blocks the thread.
+    await nextFrame();
+    if (cancelled()) return;
+    make();
+  }
+  onProgress(1, "Switching on the lights");
+}

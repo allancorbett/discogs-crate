@@ -92,7 +92,8 @@ export function Lighting({ layout, rig, playing, quality }: LightingProps) {
       bulb: new THREE.MeshStandardMaterial({
         color: "#fff1d6",
         emissive: "#ffc27a",
-        emissiveIntensity: 9,
+        // Enough to read as a lit bulb, not so much it flares.
+        emissiveIntensity: 2.2,
       }),
       cord: new THREE.MeshStandardMaterial({ color: "#1a1a1a", roughness: 0.6 }),
     }),
@@ -150,7 +151,7 @@ export function Lighting({ layout, rig, playing, quality }: LightingProps) {
       let current = assigned.current[slot];
       // Another slot already holds the lamp this one wants: keep what we have.
       if (want !== current && assigned.current.includes(want)) return;
-      const full = 38;
+      const full = 28;
       if (want !== current) {
         light.intensity = Math.max(0, light.intensity - delta * full * 5);
         if (light.intensity === 0) {
@@ -187,7 +188,7 @@ export function Lighting({ layout, rig, playing, quality }: LightingProps) {
       <spotLight
         ref={counterSpot}
         color={WARM}
-        intensity={30}
+        intensity={22}
         distance={6}
         decay={1.6}
         angle={0.95}
