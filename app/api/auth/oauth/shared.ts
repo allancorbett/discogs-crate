@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { pinnedOrigin } from "@/lib/discogs/oauth";
 
 /** Thrown when the app's own origin cannot be established safely. */
 export class UntrustedOriginError extends Error {}
@@ -20,12 +21,12 @@ export class UntrustedOriginError extends Error {}
  * So the convenience stays in development and production must pin the origin.
  */
 function origin(request: NextRequest): string {
-  const configured = process.env.DISCOGS_APP_URL?.trim();
-  if (configured) return configured.replace(/\/$/, "");
+  const pinned = pinnedOrigin();
+  if (pinned) return pinned;
 
   if (process.env.NODE_ENV === "production") {
     throw new UntrustedOriginError(
-      "DISCOGS_APP_URL must be set to use Discogs sign-in in production.",
+      "DISCOGS_APP_URL must be set to use Discogs sign-in in production outside Vercel.",
     );
   }
 

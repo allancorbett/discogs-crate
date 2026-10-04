@@ -64,6 +64,39 @@ describe("callbackUrl", () => {
   });
 });
 
+describe("callbackUrl on Vercel", () => {
+  it("uses the platform's production domain when nothing is pinned", () => {
+    setNodeEnv("production");
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "crate.vercel.app");
+
+    expect(callbackUrl(requestFrom("https://attacker.example"))).toBe(
+      "https://crate.vercel.app/api/auth/oauth/callback",
+    );
+  });
+
+  it("prefers a pinned origin over the platform's", () => {
+    setNodeEnv("production");
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "crate.vercel.app");
+    process.env.DISCOGS_APP_URL = "https://crate.example.com";
+
+    expect(callbackUrl(requestFrom("https://attacker.example"))).toBe(
+      "https://crate.example.com/api/auth/oauth/callback",
+    );
+  });
+
+  it("still refuses on a preview deployment", () => {
+    setNodeEnv("production");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "crate.vercel.app");
+
+    expect(() => callbackUrl(requestFrom("https://attacker.example"))).toThrow(
+      UntrustedOriginError,
+    );
+  });
+});
+
 describe("gateRedirect", () => {
   it("sends the browser back to the gate", () => {
     const response = gateRedirect();
