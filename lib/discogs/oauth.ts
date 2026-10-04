@@ -32,6 +32,29 @@ export function oauthConsumer(): OAuthConsumer | null {
 }
 
 /**
+ * The app's public origin, when it comes from configuration rather than from a
+ * request — see `callbackUrl` for why that matters.
+ *
+ * `DISCOGS_APP_URL` wins. Failing that, a Vercel production deployment is told
+ * its own domain by the platform in `VERCEL_PROJECT_PRODUCTION_URL`, which is
+ * just as trustworthy as a value set by hand and means OAuth works there with
+ * no extra setup. Previews are deliberately left out: their per-deployment URL
+ * is usually behind Vercel's own login, and pointing them at the production
+ * domain would drop the pending cookie on the way back.
+ */
+export function pinnedOrigin(): string | null {
+  const configured = process.env.DISCOGS_APP_URL?.trim();
+  if (configured) return configured.replace(/\/$/, "");
+
+  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  if (vercel && process.env.VERCEL_ENV === "production") {
+    return `https://${vercel.replace(/\/$/, "")}`;
+  }
+
+  return null;
+}
+
+/**
  * RFC 3986 percent-encoding. `encodeURIComponent` leaves !*'() alone, but
  * OAuth requires everything outside the unreserved set to be escaped — a
  * mismatch here silently breaks signatures for a minority of inputs.

@@ -32,7 +32,7 @@ httpOnly cookies that client-side JavaScript cannot read.
 | `DISCOGS_USER_AGENT`      | No       | Sent on every Discogs request. Defaults to a generic string; set it to something identifying your deployment, e.g. `Crate/1.0 +https://crate.example.com`. |
 | `DISCOGS_CONSUMER_KEY`    | No       | Enables "Sign in with Discogs" (see below). Both this and the secret must be set.                                                                          |
 | `DISCOGS_CONSUMER_SECRET` | No       | The other half of the OAuth credentials.                                                                                                                  |
-| `DISCOGS_APP_URL`         | In prod, with OAuth | The origin used to build the OAuth callback URL. Required in production whenever OAuth is configured; derived from the request in development.               |
+| `DISCOGS_APP_URL`         | In prod, with OAuth | The origin used to build the OAuth callback URL. Required in production whenever OAuth is configured, except on Vercel production deployments, which fall back to the platform's own domain. Derived from the request in development. |
 | `DISCOGS_DEMO_TOKEN`      | No       | Enables the demo (see below). Leave unset and the demo button never appears.                                                                               |
 
 ### Sign in with Discogs (OAuth)
@@ -58,7 +58,11 @@ shaped the implementation:
 Discogs does not require the callback URL to be registered in advance, so in
 development it is derived from the incoming request and localhost works with no
 extra configuration. **In production you must set `DISCOGS_APP_URL`**, and the
-flow refuses to start without it. The derived origin comes from the request's
+flow refuses to start without it — and the button is hidden — unless the app is a
+Vercel production deployment, where the platform-provided
+`VERCEL_PROJECT_PRODUCTION_URL` is used instead. Set `DISCOGS_APP_URL` anyway if
+people reach the app on a domain other than that one, or the pending cookie
+won't survive the round trip. The derived origin comes from the request's
 host headers — Next honours `X-Forwarded-Host` — and a proxy that passes a
 forged one through would let an attacker point the callback at their own host
 while holding the matching request token secret, which is enough to finish

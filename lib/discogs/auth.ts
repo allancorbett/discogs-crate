@@ -3,6 +3,7 @@ import {
   type OAuthConsumer,
   oauthAuthorizationHeader,
   oauthConsumer,
+  pinnedOrigin,
 } from "./oauth";
 
 /**
@@ -242,8 +243,14 @@ export async function getAuthStrategy(): Promise<AuthStrategy | null> {
   return null;
 }
 
+/**
+ * Whether "Sign in with Discogs" can actually complete here. Credentials alone
+ * are not enough in production: without a pinned origin the flow refuses to
+ * start, so offering the button would only lead to an error.
+ */
 export function isOAuthConfigured(): boolean {
-  return oauthConsumer() !== null;
+  if (oauthConsumer() === null) return false;
+  return pinnedOrigin() !== null || process.env.NODE_ENV !== "production";
 }
 
 export async function getSessionUsername(): Promise<string | null> {
